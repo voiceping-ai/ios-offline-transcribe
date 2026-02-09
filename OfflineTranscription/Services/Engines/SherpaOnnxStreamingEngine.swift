@@ -136,11 +136,10 @@ final class SherpaOnnxStreamingEngine: ASREngine {
 
         // One-shot file transcription path used by E2E:
         // feed all audio, mark input finished, and decode to completion.
-        let scaledSamples = audioArray.map { $0 * 32768.0 }
         let text = await withCheckedContinuation { (continuation: CheckedContinuation<String, Never>) in
             decodeQueue.async {
                 recognizer.reset(hotwords: "")
-                recognizer.acceptWaveform(samples: scaledSamples, sampleRate: 16000)
+                recognizer.acceptWaveform(samples: audioArray, sampleRate: 16000)
                 recognizer.inputFinished()
                 while recognizer.isReady() {
                     recognizer.decode()
@@ -172,13 +171,8 @@ final class SherpaOnnxStreamingEngine: ASREngine {
     private func enqueueAudio(_ samples: [Float]) {
         guard let recognizer else { return }
 
-        // sherpa-onnx C API expects int16-scaled float samples [-32768, 32768];
-        // internally it divides by 32768 (normalize_samples=True, not settable).
-        // Our audio is already float [-1, 1], so scale up to compensate.
-        let scaledSamples = samples.map { $0 * 32768.0 }
-
         decodeQueue.async { [weak self] in
-            recognizer.acceptWaveform(samples: scaledSamples, sampleRate: 16000)
+            recognizer.acceptWaveform(samples: samples, sampleRate: 16000)
 
             while recognizer.isReady() {
                 recognizer.decode()

@@ -10,7 +10,7 @@ import XCTest
 ///   03_inference_result.png — after transcription completes (with E2E overlay)
 ///   result.json           — machine-readable pass/fail + transcript
 final class AllModelsE2ETest: XCTestCase {
-    private let bundleId = "com.voiceping.offline-transcription"
+    private let bundleId = "com.voiceping.transcribe"
 
     // Per-model timeout (seconds) for download + load + transcribe
     // Must be larger than app-side polling timeout (TranscriptionView auto-test)

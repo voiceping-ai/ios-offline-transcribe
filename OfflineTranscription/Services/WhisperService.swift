@@ -154,6 +154,7 @@ final class WhisperService {
     private var completedChunksText: String = ""
     private var translationTask: Task<Void, Never>?
     private var lastSpokenTranslatedConfirmed: String = ""
+    private var e2eTranscribeInFlight: Bool = false
     /// Cache: last input text pair sent for translation (to skip redundant calls).
     private var lastTranslationInput: (confirmed: String, hypothesis: String)?
     private let translationService = AppleTranslationService()
@@ -567,6 +568,10 @@ final class WhisperService {
     func transcribeTestFile(_ path: String) {
         NSLog("[E2E] transcribeTestFile called, path=\(path)")
         NSLog("[E2E] activeEngine=\(String(describing: activeEngine)), modelState=\(String(describing: activeEngine?.modelState))")
+        if e2eTranscribeInFlight {
+            NSLog("[E2E] Skipping duplicate transcribeTestFile invocation while previous run is active")
+            return
+        }
         guard let engine = activeEngine, engine.modelState == .loaded else {
             NSLog("[E2E] ERROR: model not ready, activeEngine=\(String(describing: activeEngine))")
             lastError = .modelNotReady
@@ -580,9 +585,11 @@ final class WhisperService {
         }
 
         resetTranscriptionState()
+        e2eTranscribeInFlight = true
 
         cancelAndTrackTranscriptionTask()
         transcriptionTask = Task {
+            defer { e2eTranscribeInFlight = false }
             do {
                 NSLog("[E2E] Loading WAV file...")
                 let samples = try Self.loadWavFile(path: path)
@@ -591,7 +598,7 @@ final class WhisperService {
                 self.bufferSeconds = audioDuration
                 // E2E fixture audio is English (JFK sample). Keep explicit English for most
                 // models, but let large Whisper auto-detect to avoid empty-output regressions.
-                let forcedLanguage: String? = selectedModel.id.contains("whisper-large-v3-turbo")
+                let forcedLanguage: String? = selectedModel.id == "whisper-large-v3-turbo"
                     ? nil
                     : "en"
                 let options = ASRTranscriptionOptions(
@@ -605,8 +612,11 @@ final class WhisperService {
                 guard !Task.isCancelled else { return }
                 NSLog("[E2E] Transcription complete: text='\(result.text)', segments=\(result.segments.count)")
                 confirmedSegments = result.segments
-                confirmedText = result.segments.map(\.text).joined(separator: " ")
+                let segmentText = result.segments.map(\.text).joined(separator: " ")
                     .trimmingCharacters(in: .whitespacesAndNewlines)
+                confirmedText = segmentText.isEmpty
+                    ? result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    : segmentText
                 NSLog("[E2E] confirmedText set to: '\(confirmedText)'")
                 scheduleTranslationUpdate()
                 let deadline = Date().addingTimeInterval(10)

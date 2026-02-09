@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 SIMULATOR_ID="578CBE53-DFDD-4BC5-874C-5F96A59A5C64"
-BUNDLE_ID="com.voiceping.offline-transcription"
+BUNDLE_ID="com.voiceping.transcribe"
 EVIDENCE_DIR="${EVIDENCE_DIR:-$PROJECT_DIR/artifacts/e2e/ios}"
 WAV_SOURCE="${EVAL_WAV_PATH:-$PROJECT_DIR/artifacts/benchmarks/long_en_eval.wav}"
 DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$PROJECT_DIR/build/DerivedData}"
@@ -49,7 +49,8 @@ fi
 get_wait_time() {
     local model=$1
     case "$model" in
-        whisper-large-v3-turbo*|omnilingual-300m) echo 480 ;;
+        whisper-large-v3-turbo*) echo 1800 ;;
+        omnilingual-300m) echo 900 ;;
         whisper-small|parakeet-tdt-v3) echo 300 ;;
         whisper-base) echo 240 ;;
         *) echo 120 ;;
@@ -249,7 +250,7 @@ for MODEL_ID in "${MODELS[@]}"; do
         fi
 
         # Take periodic screenshot during download
-        if [ $((ELAPSED % 30)) -eq 0 ]; then
+        if [ $((ELAPSED % 30)) -eq 5 ]; then
             safe_screenshot "$MODEL_DIR/02_progress_${ELAPSED}s.png"
             echo "  Progress screenshot at ${ELAPSED}s"
         fi

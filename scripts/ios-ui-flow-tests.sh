@@ -13,7 +13,7 @@ WAV_SOURCE="${EVAL_WAV_PATH:-$PROJECT_DIR/artifacts/benchmarks/long_en_eval.wav}
 SCREENSHOT_DIR="/tmp/ui_flow_evidence"
 SCHEME="OfflineTranscription"
 TEST_CLASS="OfflineTranscriptionUITests/UserFlowUITests"
-BUNDLE_ID="com.voiceping.offline-transcription"
+BUNDLE_ID="com.voiceping.transcribe"
 
 ALL_TESTS=(
     "test_01_appLaunchAndModelLoad"

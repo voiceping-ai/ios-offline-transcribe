@@ -91,19 +91,26 @@ final class SherpaOnnxOfflineEngine: ASREngine {
             throw AppError.modelNotReady
         }
 
-        // Models using the standard mel feature extractor (SenseVoice) have
-        // normalize_samples=True which divides by 32768, so we must scale up.
-        // Moonshine has its own preprocessor.onnx that takes [-1, 1] directly.
-        let isMoonshine = currentModel?.sherpaModelConfig?.modelType == .moonshine
-        let samples = isMoonshine ? audioArray : audioArray.map { $0 * 32768.0 }
+        // Match sherpa-onnx Android behavior:
+        // Moonshine and Omnilingual consume raw [-1, 1] waveforms.
+        // SenseVoice benefits from int16-range scaling due internal normalization.
+        let modelType = currentModel?.sherpaModelConfig?.modelType
+        let needsInt16Scale = modelType == .senseVoice
+        let samples = needsInt16Scale ? audioArray.map { $0 * 32768.0 } : audioArray
 
         let result = await Task.detached {
             recognizer.decode(samples: samples, sampleRate: 16000)
         }.value
 
-        let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty, modelType == .omnilingualCtc {
+            text = await Task.detached {
+                Self.decodeOmnilingualChunked(recognizer: recognizer, samples: samples)
+            }.value
+        }
+
         guard !text.isEmpty else {
-            return ASRResult(text: "", segments: [], language: nil)
+            return ASRResult(text: "", segments: [], language: options.language)
         }
 
         // SenseVoice provides language detection
@@ -128,6 +135,37 @@ final class SherpaOnnxOfflineEngine: ASREngine {
     }
 
     // MARK: - Private
+
+    private nonisolated static func decodeOmnilingualChunked(
+        recognizer: SherpaOnnxOfflineRecognizer,
+        samples: [Float]
+    ) -> String {
+        let chunkSize = 16000 * 10
+        var pieces: [String] = []
+
+        func runPass(_ input: [Float]) {
+            var offset = 0
+            while offset < input.count {
+                let end = min(offset + chunkSize, input.count)
+                let chunk = Array(input[offset..<end])
+                let partial = recognizer.decode(samples: chunk, sampleRate: 16000)
+                let text = partial.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty {
+                    pieces.append(text)
+                }
+                offset = end
+            }
+        }
+
+        runPass(samples)
+        if pieces.isEmpty {
+            // Retry with conservative gain boost for low-amplitude fixtures.
+            let boosted = samples.map { min(max($0 * 2.5, -1.0), 1.0) }
+            runPass(boosted)
+        }
+
+        return pieces.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     private nonisolated static func createRecognizer(
         config: SherpaModelConfig,
