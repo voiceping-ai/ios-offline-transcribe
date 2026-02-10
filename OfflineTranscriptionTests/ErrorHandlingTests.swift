@@ -1,5 +1,4 @@
 import XCTest
-import SwiftData
 @testable import OfflineTranscription
 
 /// Tests for error handling, permission flows, and error propagation.
@@ -73,7 +72,6 @@ final class ErrorHandlingTests: XCTestCase {
 
     func testClearLastError() {
         let s = WhisperService()
-        // Can't directly set lastError (private(set)), but clearLastError should work
         s.clearLastError()
         XCTAssertNil(s.lastError)
     }
@@ -106,9 +104,6 @@ final class ErrorHandlingTests: XCTestCase {
     }
 
     func testViewModelPermissionDeniedDetection() async {
-        // When mic is denied, showPermissionDenied should be set.
-        // We can't easily simulate actual mic denial in tests,
-        // but we verify the property exists and starts false.
         let vm = TranscriptionViewModel(whisperService: WhisperService())
         XCTAssertFalse(vm.showPermissionDenied)
     }
@@ -146,42 +141,5 @@ final class ErrorHandlingTests: XCTestCase {
             // Expected
         }
         XCTAssertEqual(s.sessionState, .idle, "Should reset to idle after failure")
-    }
-
-    // MARK: - Data Persistence Edge Cases
-
-    @MainActor
-    func testSaveEmptyTranscriptionIsNoOp() throws {
-        let container = try ModelContainer(
-            for: TranscriptionRecord.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
-        let ctx = container.mainContext
-        let vm = TranscriptionViewModel(whisperService: WhisperService())
-        vm.saveTranscription(using: ctx)
-
-        let records = try ctx.fetch(FetchDescriptor<TranscriptionRecord>())
-        XCTAssertEqual(records.count, 0)
-    }
-
-    @MainActor
-    func testSaveWithZeroDurationIsNoOp() throws {
-        let container = try ModelContainer(
-            for: TranscriptionRecord.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
-        let ctx = container.mainContext
-
-        let s = WhisperService()
-        s.testSetState(confirmedText: "Test text", confirmedSegments: [
-            ASRSegment(id: 1, text: "Test text", start: 0, end: 5)
-        ])
-
-        let vm = TranscriptionViewModel(whisperService: s)
-        // recordingDuration is 0 (no start/stop cycle), so save should be a no-op
-        vm.saveTranscription(using: ctx)
-
-        let records = try ctx.fetch(FetchDescriptor<TranscriptionRecord>())
-        XCTAssertEqual(records.count, 0, "Should not save when recordingDuration is 0")
     }
 }

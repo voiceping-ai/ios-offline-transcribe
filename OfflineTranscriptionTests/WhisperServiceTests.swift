@@ -142,19 +142,7 @@ final class WhisperServiceTests: XCTestCase {
         XCTAssertTrue(AppError.transcriptionFailed(underlying: err).localizedDescription.contains("Transcription"))
     }
 
-    // MARK: - Iteration 10
-    func testTranscriptionRecordCreation() {
-        let r = TranscriptionRecord(text: "Hello world", durationSeconds: 5.5, modelUsed: "Base")
-        XCTAssertEqual(r.text, "Hello world")
-        XCTAssertEqual(r.durationSeconds, 5.5, accuracy: 0.001)
-        XCTAssertEqual(r.modelUsed, "Base")
-        XCTAssertNil(r.language)
-        XCTAssertNotNil(r.id)
-        XCTAssertTrue(abs(r.createdAt.timeIntervalSinceNow) < 2.0)
-
-        let r2 = TranscriptionRecord(text: "Bonjour", durationSeconds: 3.0, modelUsed: "Small", language: "fr")
-        XCTAssertEqual(r2.language, "fr")
-    }
+    // MARK: - Iteration 10 (TranscriptionRecord removed from this target)
 
     // MARK: - New: Model families & engine types
     func testModelFamilies() {

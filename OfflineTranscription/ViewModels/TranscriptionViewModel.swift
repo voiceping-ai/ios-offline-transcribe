@@ -74,14 +74,18 @@ final class TranscriptionViewModel {
         PermissionManager.openAppSettings()
     }
 
+    var isTranscribingFile: Bool { whisperService.isTranscribingFile }
+
+    func transcribeFile(_ url: URL) {
+        whisperService.transcribeFile(url)
+    }
+
     func clearTranscription() {
         showPermissionDenied = false
         whisperService.clearTranscription()
     }
 
-    #if DEBUG
     func transcribeTestFile(_ path: String) {
         whisperService.transcribeTestFile(path)
     }
-    #endif
 }

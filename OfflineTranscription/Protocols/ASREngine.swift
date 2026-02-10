@@ -79,6 +79,9 @@ protocol ASREngine: AnyObject {
     /// Download progress (0.0–1.0).
     var downloadProgress: Double { get }
 
+    /// Human-readable status message during model loading (e.g. "Trying CoreML...").
+    var loadingStatusMessage: String { get }
+
     /// Set up (download + load) the model.
     func setupModel(_ model: ModelInfo) async throws
 
@@ -142,6 +145,9 @@ enum ASRTask: Sendable {
 // MARK: - Default implementations
 
 extension ASREngine {
+    // Default: no status message
+    var loadingStatusMessage: String { "" }
+
     // Offline engines: streaming methods are no-ops
     func feedAudio(_ samples: [Float]) throws {}
     func getStreamingResult() -> ASRResult? { nil }

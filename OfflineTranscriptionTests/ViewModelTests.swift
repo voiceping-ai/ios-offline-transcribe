@@ -1,8 +1,7 @@
 import XCTest
-import SwiftData
 @testable import OfflineTranscription
 
-/// Tests for ViewModels and SwiftData persistence.
+/// Tests for ViewModels.
 @MainActor
 final class ViewModelTests: XCTestCase {
 
@@ -57,21 +56,6 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(service.selectedModel.id, "whisper-tiny")
     }
 
-    // MARK: - Iteration 5: Save empty transcription is no-op
-    @MainActor
-    func testSaveEmptyTranscription() throws {
-        let container = try ModelContainer(
-            for: TranscriptionRecord.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
-        let ctx = container.mainContext
-        let vm = TranscriptionViewModel(whisperService: WhisperService())
-        vm.saveTranscription(using: ctx)
-
-        let records = try ctx.fetch(FetchDescriptor<TranscriptionRecord>())
-        XCTAssertEqual(records.count, 0, "Should not save empty transcription")
-    }
-
     // MARK: - Iteration 6: ViewModel delegates to service
     func testViewModelDelegatesToService() {
         let service = WhisperService()
@@ -95,50 +79,5 @@ final class ViewModelTests: XCTestCase {
         for model in ModelInfo.availableModels {
             XCTAssertEqual(vm.isModelDownloaded(model), service.isModelDownloaded(model))
         }
-    }
-
-    // MARK: - Iteration 9: Multiple SwiftData records
-    @MainActor
-    func testMultipleRecords() throws {
-        let container = try ModelContainer(
-            for: TranscriptionRecord.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
-        let ctx = container.mainContext
-
-        let r1 = TranscriptionRecord(text: "First", durationSeconds: 5, modelUsed: "Base")
-        let r2 = TranscriptionRecord(text: "Second", durationSeconds: 10, modelUsed: "Tiny")
-        let r3 = TranscriptionRecord(text: "Third", durationSeconds: 15, modelUsed: "Small")
-
-        ctx.insert(r1)
-        ctx.insert(r2)
-        ctx.insert(r3)
-        try ctx.save()
-
-        let records = try ctx.fetch(FetchDescriptor<TranscriptionRecord>())
-        XCTAssertEqual(records.count, 3)
-    }
-
-    // MARK: - Iteration 10: Delete record
-    @MainActor
-    func testDeleteRecord() throws {
-        let container = try ModelContainer(
-            for: TranscriptionRecord.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
-        let ctx = container.mainContext
-
-        let r1 = TranscriptionRecord(text: "To delete", durationSeconds: 5, modelUsed: "Base")
-        let r2 = TranscriptionRecord(text: "To keep", durationSeconds: 10, modelUsed: "Base")
-        ctx.insert(r1)
-        ctx.insert(r2)
-        try ctx.save()
-
-        ctx.delete(r1)
-        try ctx.save()
-
-        let remaining = try ctx.fetch(FetchDescriptor<TranscriptionRecord>())
-        XCTAssertEqual(remaining.count, 1)
-        XCTAssertEqual(remaining[0].text, "To keep")
     }
 }

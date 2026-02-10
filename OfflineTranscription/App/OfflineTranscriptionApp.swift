@@ -34,19 +34,26 @@ struct RootView: View {
             switch whisperService.modelState {
             case .loaded:
                 TranscriptionRootView()
-            case .loading, .downloading:
+            case .loading, .downloading, .downloaded:
                 VStack(spacing: 8) {
-                    ProgressView("Loading model...")
+                    ProgressView(whisperService.modelState == .downloading
+                        ? "Downloading model..." : "Loading model...")
                     if whisperService.modelState == .downloading {
                         Text("\(Int(whisperService.downloadProgress * 100))%")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    if !whisperService.loadingStatusMessage.isEmpty {
+                        Text(whisperService.loadingStatusMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             default:
-                // Show setup if no engine is active, otherwise keep MainTabView
-                // so model switching doesn't flash setup screen
-                if whisperService.activeEngine != nil {
+                // Only keep TranscriptionRootView if a model was previously loaded
+                // (e.g. during model switch). Prevents navigating to transcription
+                // when download/load failed and no model is ready.
+                if whisperService.activeEngine?.modelState == .loaded {
                     TranscriptionRootView()
                 } else {
                     ModelSetupView()
@@ -61,11 +68,12 @@ struct RootView: View {
                 UserDefaults.standard.removeObject(forKey: "selectedModelVariant")
             }
 
+            // Auto-load only for E2E / UI testing (--model-id / --auto-test).
+            // Normal launch always starts on the model selection screen.
             if let modelId = Self.autoTestModelId,
                let model = ModelInfo.availableModels.first(where: { $0.id == modelId }) {
                 await whisperService.switchModel(to: model)
-            } else if !resetState {
-                // Skip auto-load when resetting state (e.g., test 10 wants setup screen)
+            } else if ProcessInfo.processInfo.arguments.contains("--auto-test") {
                 await whisperService.loadModelIfAvailable()
             }
         }

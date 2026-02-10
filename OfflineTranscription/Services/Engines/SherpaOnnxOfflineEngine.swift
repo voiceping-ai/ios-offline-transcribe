@@ -7,6 +7,7 @@ final class SherpaOnnxOfflineEngine: ASREngine {
     var isStreaming: Bool { false }
     private(set) var modelState: ASRModelState = .unloaded
     private(set) var downloadProgress: Double = 0.0
+    private(set) var loadingStatusMessage: String = ""
     var audioSamples: [Float] { recorder.audioSamples }
     var relativeEnergy: [Float] { recorder.relativeEnergy }
 
@@ -53,19 +54,57 @@ final class SherpaOnnxOfflineEngine: ASREngine {
 
         modelState = .loading
         let dirPath = modelDir.path
+        let providers = Self.preferredOfflineProviders()
+        var lastError: Error?
 
-        do {
-            let recognizer = try await Task.detached {
-                return try Self.createRecognizer(config: config, modelDir: dirPath)
-            }.value
+        for provider in providers {
+            // Update status for UI
+            if provider == "coreml" {
+                loadingStatusMessage = "Trying CoreML acceleration..."
+            } else {
+                loadingStatusMessage = "Loading with CPU provider..."
+            }
 
-            self.recognizer = recognizer
-            self.currentModel = model
-            self.modelState = .loaded
-        } catch {
-            modelState = .error
-            throw AppError.modelLoadFailed(underlying: error)
+            do {
+                let recognizer = try await Task.detached {
+                    return try Self.createRecognizerWithProvider(
+                        config: config, modelDir: dirPath, provider: provider
+                    )
+                }.value
+
+                // Probe CoreML to verify it actually works on this chip
+                if provider == "coreml" {
+                    loadingStatusMessage = "Probing CoreML compatibility..."
+                    let probeOK = await Task.detached {
+                        Self.probeRecognizer(recognizer)
+                    }.value
+                    if !probeOK {
+                        NSLog("[SherpaOnnxOfflineEngine] CoreML probe FAILED for %@, trying next provider", config.modelType.rawValue)
+                        loadingStatusMessage = "CoreML not available on this device"
+                        try? await Task.sleep(for: .milliseconds(500))
+                        continue
+                    }
+                    loadingStatusMessage = "CoreML acceleration active"
+                }
+
+                NSLog("[SherpaOnnxOfflineEngine] Created recognizer with provider=%@ model=%@", provider, config.modelType.rawValue)
+                self.recognizer = recognizer
+                self.currentModel = model
+                self.modelState = .loaded
+                self.loadingStatusMessage = ""
+                return
+            } catch {
+                lastError = error
+                NSLog("SherpaOnnxOfflineEngine: provider %@ failed: %@", provider, "\(error)")
+            }
         }
+
+        modelState = .error
+        loadingStatusMessage = ""
+        throw AppError.modelLoadFailed(underlying: lastError ?? NSError(
+            domain: "SherpaOnnxOfflineEngine", code: -6,
+            userInfo: [NSLocalizedDescriptionKey: "Failed to create recognizer for all providers"]
+        ))
     }
 
     func isModelDownloaded(_ model: ModelInfo) -> Bool {
@@ -87,48 +126,83 @@ final class SherpaOnnxOfflineEngine: ASREngine {
     }
 
     func transcribe(audioArray: [Float], options: ASRTranscriptionOptions) async throws -> ASRResult {
+        let logger = InferenceLogger.shared
         guard let recognizer else {
+            logger.log("ERROR: transcribe called but recognizer is nil (model not ready)")
             throw AppError.modelNotReady
         }
 
-        // Match sherpa-onnx Android behavior:
-        // Moonshine and Omnilingual consume raw [-1, 1] waveforms.
-        // SenseVoice benefits from int16-range scaling due internal normalization.
         let modelType = currentModel?.sherpaModelConfig?.modelType
-        let needsInt16Scale = modelType == .senseVoice
-        let samples = needsInt16Scale ? audioArray.map { $0 * 32768.0 } : audioArray
+        let modelName = currentModel?.id ?? "unknown"
+        let audioDuration = Float(audioArray.count) / 16000.0
+
+        // Log audio stats
+        let minSample = audioArray.min() ?? 0
+        let maxSample = audioArray.max() ?? 0
+        let rms = sqrt(audioArray.reduce(0.0) { $0 + $1 * $1 } / max(Float(audioArray.count), 1))
+        logger.log("TRANSCRIBE START model=\(modelName) type=\(modelType?.rawValue ?? "nil") samples=\(audioArray.count) duration=\(String(format: "%.2f", audioDuration))s min=\(String(format: "%.4f", minSample)) max=\(String(format: "%.4f", maxSample)) rms=\(String(format: "%.6f", rms))")
+
+        // All sherpa-onnx models consume raw [-1, 1] float waveforms directly.
+        // No int16 scaling — matches Android behavior where SenseVoice works
+        // with raw floats and has better accuracy.
+        let samples = audioArray
 
         let isLongOmnilingual = modelType == .omnilingualCtc && samples.count > 16000 * 8
 
+        let decodeStart = CFAbsoluteTimeGetCurrent()
         var result = await Task.detached {
             recognizer.decode(samples: samples, sampleRate: 16000)
         }.value
+        let decodeEnd = CFAbsoluteTimeGetCurrent()
 
         var text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        logger.log("  Decode #1 took \(String(format: "%.3f", decodeEnd - decodeStart))s result_len=\(text.count) lang=\"\(result.lang)\" text=\"\(String(text.prefix(200)))\"")
+
         if text.isEmpty, modelType == .omnilingualCtc, !isLongOmnilingual {
-            // Some omnilingual CTC builds are sensitive to waveform scale.
-            // Retry full decode with int16-like scaling before chunked fallback.
+            logger.log("  Omnilingual retry with int16 scaling...")
             let scaledSamples = samples.map { $0 * 32768.0 }
+            let retryStart = CFAbsoluteTimeGetCurrent()
             result = await Task.detached {
                 recognizer.decode(samples: scaledSamples, sampleRate: 16000)
             }.value
+            let retryEnd = CFAbsoluteTimeGetCurrent()
             text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            logger.log("  Decode #2 (scaled) took \(String(format: "%.3f", retryEnd - retryStart))s result_len=\(text.count) text=\"\(String(text.prefix(200)))\"")
         }
         if text.isEmpty, modelType == .omnilingualCtc {
+            logger.log("  Omnilingual chunked fallback...")
+            let chunkStart = CFAbsoluteTimeGetCurrent()
             text = await Task.detached {
                 Self.decodeOmnilingualChunked(
                     recognizer: recognizer,
                     samples: samples
                 )
             }.value
-        }
-
-        guard !text.isEmpty else {
-            return ASRResult(text: "", segments: [], language: options.language)
+            let chunkEnd = CFAbsoluteTimeGetCurrent()
+            logger.log("  Chunked decode took \(String(format: "%.3f", chunkEnd - chunkStart))s result_len=\(text.count) text=\"\(String(text.prefix(200)))\"")
         }
 
         // SenseVoice provides language detection
         let detectedLang: String? = result.lang.isEmpty ? nil : result.lang
+
+        // Strip spurious spaces from CJK output. SenseVoice's BPE decoder
+        // sometimes inserts word-boundary spaces that are wrong for ja/zh/ko.
+        if modelType == .senseVoice, let lang = detectedLang {
+            let langCode = lang.replacingOccurrences(of: "<|", with: "")
+                .replacingOccurrences(of: "|>", with: "")
+            if ["ja", "zh", "ko", "yue"].contains(langCode) {
+                let before = text
+                text = Self.stripCJKSpaces(text)
+                if before != text {
+                    logger.log("  CJK space strip (\(langCode)): \"\(before)\" → \"\(text)\"")
+                }
+            }
+        }
+
+        guard !text.isEmpty else {
+            logger.log("  EMPTY RESULT — returning empty ASRResult for \(modelName)")
+            return ASRResult(text: "", segments: [], language: options.language)
+        }
 
         // Create a single segment for the entire transcription
         let duration = Float(audioArray.count) / 16000.0
@@ -140,6 +214,9 @@ final class SherpaOnnxOfflineEngine: ASREngine {
             start: 0,
             end: duration
         )
+
+        let totalTime = CFAbsoluteTimeGetCurrent() - decodeStart
+        logger.log("TRANSCRIBE END model=\(modelName) total=\(String(format: "%.3f", totalTime))s rtf=\(String(format: "%.2f", totalTime / Double(audioDuration))) text_len=\(text.count)")
 
         return ASRResult(
             text: text,
@@ -220,9 +297,11 @@ final class SherpaOnnxOfflineEngine: ASREngine {
         return score
     }
 
-    private nonisolated static func createRecognizer(
+    /// Create a recognizer with a specific provider. Throws on failure.
+    private nonisolated static func createRecognizerWithProvider(
         config: SherpaModelConfig,
-        modelDir: String
+        modelDir: String,
+        provider: String
     ) throws -> SherpaOnnxOfflineRecognizer {
         let fm = FileManager.default
         let tokensPath = "\(modelDir)/\(config.tokens)"
@@ -232,6 +311,7 @@ final class SherpaOnnxOfflineEngine: ASREngine {
                           userInfo: [NSLocalizedDescriptionKey: "tokens.txt not found at \(tokensPath)"])
         }
 
+        let numThreads = recommendedOfflineThreads()
         var modelConfig: SherpaOnnxOfflineModelConfig
 
         switch config.modelType {
@@ -259,7 +339,8 @@ final class SherpaOnnxOfflineEngine: ASREngine {
             )
             modelConfig = sherpaOnnxOfflineModelConfig(
                 tokens: tokensPath,
-                numThreads: 2,
+                numThreads: numThreads,
+                provider: provider,
                 debug: 0,
                 moonshine: moonshineConfig
             )
@@ -276,12 +357,13 @@ final class SherpaOnnxOfflineEngine: ASREngine {
             }
             let senseVoiceConfig = sherpaOnnxOfflineSenseVoiceModelConfig(
                 model: modelPath,
-                language: "",
+                language: "auto",
                 useInverseTextNormalization: true
             )
             modelConfig = sherpaOnnxOfflineModelConfig(
                 tokens: tokensPath,
-                numThreads: 2,
+                numThreads: numThreads,
+                provider: provider,
                 debug: 0,
                 senseVoice: senseVoiceConfig
             )
@@ -303,7 +385,8 @@ final class SherpaOnnxOfflineEngine: ASREngine {
             let omniConfig = sherpaOnnxOfflineOmnilingualAsrCtcModelConfig(model: modelPath)
             modelConfig = sherpaOnnxOfflineModelConfig(
                 tokens: tokensPath,
-                numThreads: 2,
+                numThreads: numThreads,
+                provider: provider,
                 debug: 0,
                 omnilingual: omniConfig
             )
@@ -318,8 +401,81 @@ final class SherpaOnnxOfflineEngine: ASREngine {
 
         guard let recognizer = SherpaOnnxOfflineRecognizer(config: &recognizerConfig) else {
             throw NSError(domain: "SherpaOnnxOfflineEngine", code: -6,
-                          userInfo: [NSLocalizedDescriptionKey: "Failed to create offline recognizer — model files may be invalid"])
+                          userInfo: [NSLocalizedDescriptionKey: "Failed to create offline recognizer for provider \(provider)"])
         }
+
         return recognizer
+    }
+
+    /// Quick probe: feed a 1s 440Hz sine wave and check if the recognizer returns any text.
+    /// A working recognizer will detect *something*; a broken CoreML backend returns empty.
+    private nonisolated static func probeRecognizer(_ recognizer: SherpaOnnxOfflineRecognizer) -> Bool {
+        let sampleRate = 16000
+        let count = sampleRate  // 1 second
+        // Generate a 440Hz sine tone at moderate volume
+        var probe = [Float](repeating: 0, count: count)
+        for i in 0..<count {
+            probe[i] = 0.3 * sin(2.0 * .pi * 440.0 * Float(i) / Float(sampleRate))
+        }
+        let result = recognizer.decode(samples: probe, sampleRate: sampleRate)
+        let text = result.text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+        let lang = result.lang
+        let hasOutput = !text.isEmpty || !lang.isEmpty
+        NSLog("[SherpaOnnxOfflineEngine] Probe result: text=\"%@\" lang=\"%@\" hasOutput=%d",
+              String(text.prefix(50)), lang, hasOutput ? 1 : 0)
+        return hasOutput
+    }
+
+    /// Remove spaces between CJK characters. Keeps spaces around Latin/number runs.
+    private nonisolated static func stripCJKSpaces(_ text: String) -> String {
+        var result = ""
+        let chars = Array(text)
+        for (i, char) in chars.enumerated() {
+            if char == " " {
+                let prev = i > 0 ? chars[i - 1] : nil
+                let next = i + 1 < chars.count ? chars[i + 1] : nil
+                // Keep space only if both neighbors are non-CJK (Latin, digits, etc.)
+                let prevIsCJK = prev.map { Self.isCJK($0) } ?? true
+                let nextIsCJK = next.map { Self.isCJK($0) } ?? true
+                if !prevIsCJK && !nextIsCJK {
+                    result.append(char)
+                }
+                // Otherwise drop the space
+            } else {
+                result.append(char)
+            }
+        }
+        return result
+    }
+
+    private nonisolated static func isCJK(_ char: Character) -> Bool {
+        guard let scalar = char.unicodeScalars.first else { return false }
+        let v = scalar.value
+        // CJK Unified Ideographs, Hiragana, Katakana, Hangul, CJK punctuation
+        return (v >= 0x3000 && v <= 0x9FFF)
+            || (v >= 0xAC00 && v <= 0xD7AF)  // Hangul Syllables
+            || (v >= 0xF900 && v <= 0xFAFF)   // CJK Compat Ideographs
+            || (v >= 0xFF00 && v <= 0xFFEF)   // Fullwidth Forms
+            || (v >= 0x20000 && v <= 0x2FA1F)  // CJK Extension B+
+    }
+
+    private nonisolated static func preferredOfflineProviders() -> [String] {
+        // Try CoreML first for Neural Engine acceleration; probe validates it
+        // actually works (fails silently on some chips like A12X). CPU fallback.
+        ["coreml", "cpu"]
+    }
+
+    private nonisolated static func recommendedOfflineThreads() -> Int {
+        let cores = max(ProcessInfo.processInfo.activeProcessorCount, 1)
+        switch cores {
+        case 0 ... 2:
+            return 1
+        case 3 ... 4:
+            return 2
+        case 5 ... 8:
+            return 4
+        default:
+            return 6
+        }
     }
 }

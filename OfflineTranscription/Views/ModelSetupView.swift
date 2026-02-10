@@ -5,7 +5,9 @@ struct ModelSetupView: View {
     @State private var viewModel: ModelManagementViewModel?
 
     private var isBusy: Bool {
-        whisperService.modelState == .downloading || whisperService.modelState == .loading
+        whisperService.modelState == .downloading
+            || whisperService.modelState == .downloaded
+            || whisperService.modelState == .loading
     }
 
     var body: some View {

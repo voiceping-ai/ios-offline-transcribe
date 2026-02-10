@@ -122,13 +122,8 @@ final class AllModelsE2ETest: XCTestCase {
                 true,
                 "[\(modelId)] Expected pass=true in result.json, got: \(json)"
             )
-            XCTAssertEqual(
-                object["tts_mic_guard_violations"] as? Int,
-                0,
-                "[\(modelId)] Expected tts_mic_guard_violations=0 in result.json, got: \(json)"
-            )
 
-            // Log translation/TTS evidence (informational, not required for pass)
+            // Log translation evidence (informational, not required for pass)
             if object["expects_translation"] as? Bool == true {
                 let translatedText = (object["translated_text"] as? String)?.trimmingCharacters(
                     in: .whitespacesAndNewlines
@@ -137,17 +132,6 @@ final class AllModelsE2ETest: XCTestCase {
                     NSLog("[E2E] [\(modelId)] WARNING: translation enabled but translated_text is empty")
                 } else {
                     NSLog("[E2E] [\(modelId)] Translation evidence: \(translatedText.prefix(80))...")
-                }
-            }
-
-            if object["expects_tts_evidence"] as? Bool == true {
-                let ttsPath = (object["tts_audio_path"] as? String)?.trimmingCharacters(
-                    in: .whitespacesAndNewlines
-                ) ?? ""
-                if ttsPath.isEmpty {
-                    NSLog("[E2E] [\(modelId)] WARNING: TTS enabled but tts_audio_path is empty")
-                } else {
-                    NSLog("[E2E] [\(modelId)] TTS evidence: \(ttsPath)")
                 }
             }
         } else {

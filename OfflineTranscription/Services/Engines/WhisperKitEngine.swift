@@ -12,6 +12,7 @@ final class WhisperKitEngine: ASREngine {
 
     private(set) var modelState: ASRModelState = .unloaded
     private(set) var downloadProgress: Double = 0.0
+    private(set) var loadingStatusMessage: String = ""
 
     private var whisperKit: WhisperKit?
     private var lastEnergyUpdateTime: CFAbsoluteTime = 0
@@ -34,9 +35,12 @@ final class WhisperKitEngine: ASREngine {
     }
 
     func setupModel(_ model: ModelInfo) async throws {
+        let logger = InferenceLogger.shared
         guard let variant = model.variant else {
             throw AppError.noModelSelected
         }
+
+        logger.log("[WhisperKitEngine] setupModel: variant=\(variant)")
 
         // Phase 1: Download
         modelState = .downloading
@@ -53,7 +57,9 @@ final class WhisperKitEngine: ASREngine {
                     }
                 }
             )
+            logger.log("[WhisperKitEngine] Download complete: \(modelFolderURL.path())")
         } catch {
+            logger.log("[WhisperKitEngine] Download FAILED: \(error)")
             modelState = .unloaded
             downloadProgress = 0.0
             throw AppError.modelDownloadFailed(underlying: error)
@@ -62,8 +68,11 @@ final class WhisperKitEngine: ASREngine {
         modelState = .downloaded
         downloadProgress = 1.0
 
-        // Phase 2: Load
+        // Phase 2: Load (CoreML compilation can take 30-60s on first use)
+        modelState = .loading
+        loadingStatusMessage = "Compiling CoreML model..."
         do {
+            logger.log("[WhisperKitEngine] Loading model from: \(modelFolderURL.path())")
             let config = WhisperKitConfig(
                 model: variant,
                 modelFolder: modelFolderURL.path(),
@@ -80,14 +89,18 @@ final class WhisperKitEngine: ASREngine {
 
             whisperKit = try await WhisperKit(config)
             modelState = .loaded
+            loadingStatusMessage = ""
+            logger.log("[WhisperKitEngine] Model loaded successfully: \(variant)")
 
             UserDefaults.standard.set(
                 modelFolderURL.path(),
                 forKey: modelFolderKey(for: variant)
             )
         } catch {
+            logger.log("[WhisperKitEngine] Load FAILED: \(error)")
             modelState = .unloaded
             downloadProgress = 0.0
+            loadingStatusMessage = ""
             throw AppError.modelLoadFailed(underlying: error)
         }
     }
@@ -104,6 +117,7 @@ final class WhisperKitEngine: ASREngine {
         }
 
         modelState = .loading
+        loadingStatusMessage = "Compiling CoreML model..."
 
         do {
             let config = WhisperKitConfig(
@@ -122,8 +136,10 @@ final class WhisperKitEngine: ASREngine {
 
             whisperKit = try await WhisperKit(config)
             modelState = .loaded
+            loadingStatusMessage = ""
         } catch {
             modelState = .unloaded
+            loadingStatusMessage = ""
         }
     }
 

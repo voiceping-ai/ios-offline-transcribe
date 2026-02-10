@@ -38,34 +38,6 @@ final class AppleTranslationService {
     }
 }
 
-/// Transcription-only stub: TTS is disabled in this repo.
-/// Playback callback remains for compatibility with existing engine hooks.
-final class NativeTTSService {
-    var onPlaybackStateChanged: ((Bool) -> Void)?
-
-    func speak(
-        text: String,
-        languageCode: String,
-        rate: Float,
-        voiceIdentifier: String?
-    ) {
-        _ = text
-        _ = languageCode
-        _ = rate
-        _ = voiceIdentifier
-        onPlaybackStateChanged?(true)
-        onPlaybackStateChanged?(false)
-    }
-
-    func stop() {
-        onPlaybackStateChanged?(false)
-    }
-
-    func latestEvidenceFilePath() -> String? {
-        nil
-    }
-}
-
 @MainActor
 @Observable
 final class WhisperService {
@@ -77,6 +49,7 @@ final class WhisperService {
     private(set) var availableModels: [String] = []
     private(set) var currentModelVariant: String?
     private(set) var lastError: AppError?
+    private(set) var loadingStatusMessage: String = ""
 
     // Session & transcription state
     private(set) var sessionState: SessionState = .idle
@@ -95,10 +68,6 @@ final class WhisperService {
     private(set) var translatedHypothesisText: String = ""
     private(set) var translationWarning: String?
     private(set) var translationModelStatus: TranslationModelStatus = .unknown
-    private(set) var isSpeakingTTS: Bool = false
-    private(set) var ttsStartCount: Int = 0
-    private(set) var ttsMicGuardViolations: Int = 0
-    private(set) var micStoppedForTTS: Bool = false
 
     // Configuration
     var selectedModel: ModelInfo = ModelInfo.defaultModel
@@ -112,17 +81,7 @@ final class WhisperService {
             if translationEnabled {
                 scheduleTranslationUpdate()
             } else {
-                resetTranslationState(stopTTS: true)
-            }
-        }
-    }
-    var speakTranslatedAudio: Bool = false {
-        didSet {
-            if !speakTranslatedAudio {
-                ttsService.stop()
-                lastSpokenTranslatedConfirmed = ""
-            } else {
-                speakTranslatedDeltaIfNeeded(from: translatedConfirmedText)
+                resetTranslationState()
             }
         }
     }
@@ -132,8 +91,6 @@ final class WhisperService {
     var translationTargetLanguageCode: String = "ja" {
         didSet { scheduleTranslationUpdate() }
     }
-    var ttsRate: Float = AVSpeechUtteranceDefaultSpeechRate
-    var ttsVoiceIdentifier: String?
 
     // Engine delegation
     private(set) var activeEngine: ASREngine?
@@ -153,12 +110,11 @@ final class WhisperService {
     /// Finalized chunk texts, each representing one completed transcription window.
     private var completedChunksText: String = ""
     private var translationTask: Task<Void, Never>?
-    private var lastSpokenTranslatedConfirmed: String = ""
     private var e2eTranscribeInFlight: Bool = false
     /// Cache: last input text pair sent for translation (to skip redundant calls).
     private var lastTranslationInput: (confirmed: String, hypothesis: String)?
+    private var lastUIMeterUpdateTimestamp: CFAbsoluteTime = 0
     private let translationService = AppleTranslationService()
-    private let ttsService = NativeTTSService()
 
     /// Called from TranslationBridgeView when a TranslationSession becomes available/unavailable.
     func setTranslationSession(_ session: Any?) {
@@ -180,10 +136,24 @@ final class WhisperService {
     private var metricsTask: Task<Void, Never>?
     private let selectedModelKey = "selectedModelVariant"
     private static let sampleRate: Float = 16000
+    private static let displayEnergyFrameLimit = 160
+    private static let uiMeterUpdateInterval: CFTimeInterval = 0.12
     /// Maximum audio chunk duration (seconds). Each chunk is transcribed independently;
     /// when the buffer exceeds this, the current hypothesis is confirmed and a new chunk begins.
-    /// 15s matches Android and keeps mobile inference fast (Whisper is O(n) to O(n²) in audio length).
-    private static let maxChunkSeconds: Float = 15.0
+    /// WhisperKit: 15s (multi-segment, eager mode confirms progressively).
+    /// sherpa-onnx offline: 8s (single-segment, RTF ~0.17 → keeps decode under 1.4s).
+    private static let defaultMaxChunkSeconds: Float = 15.0
+    private static let sherpaOfflineMaxChunkSeconds: Float = 8.0
+
+    /// Minimum RMS energy to submit audio for inference. Below this, the audio is
+    /// near-silence and SenseVoice tends to hallucinate ("I.", "Yeah.", "The.").
+    private static let minInferenceRMS: Float = 0.012
+
+    private var maxChunkSeconds: Float {
+        selectedModel.engineType == .sherpaOnnxOffline
+            ? Self.sherpaOfflineMaxChunkSeconds
+            : Self.defaultMaxChunkSeconds
+    }
 
     /// Cancel the active transcription task and keep a handle so we can await
     /// full teardown before starting a new inference session.
@@ -213,15 +183,6 @@ final class WhisperService {
                     ?? ModelInfo.availableModels.first(where: { $0.id == saved })
                     ?? ModelInfo.findByLegacyId(saved) {
             self.selectedModel = model
-        }
-        ttsService.onPlaybackStateChanged = { [weak self] speaking in
-            guard let self else { return }
-            self.isSpeakingTTS = speaking
-            guard speaking else { return }
-            if self.isRecording || self.sessionState == .recording {
-                self.ttsMicGuardViolations += 1
-                self.stopRecordingForTTSIfNeeded()
-            }
         }
         migrateLegacyModelFolder()
         setupAudioObservers()
@@ -376,6 +337,7 @@ final class WhisperService {
             }
         } catch {
             guard activeEngine === engine else { return }
+            activeEngine = nil
             modelState = .unloaded
         }
     }
@@ -392,6 +354,8 @@ final class WhisperService {
     }
 
     func setupModel() async {
+        let logger = InferenceLogger.shared
+        logger.log("[WhisperService] setupModel: model=\(selectedModel.id) engine=\(selectedModel.engineType)")
         let engine = EngineFactory.makeEngine(for: selectedModel)
         activeEngine = engine
 
@@ -399,12 +363,13 @@ final class WhisperService {
         downloadProgress = 0.0
         lastError = nil
 
-        // Sync download progress from engine in background
+        // Sync download progress and status from engine in background
         let progressTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(200))
                 guard let self, self.activeEngine === engine else { break }
                 self.downloadProgress = engine.downloadProgress
+                self.loadingStatusMessage = engine.loadingStatusMessage
                 let engineState = engine.modelState
                 if engineState == .downloaded || engineState == .loading {
                     self.modelState = engineState
@@ -416,9 +381,14 @@ final class WhisperService {
             try await engine.setupModel(selectedModel)
             progressTask.cancel()
             // Verify this engine is still active (not replaced by a concurrent switch)
-            guard activeEngine === engine else { return }
+            guard activeEngine === engine else {
+                logger.log("[WhisperService] setupModel: engine replaced during setup, aborting")
+                return
+            }
             modelState = engine.modelState
             downloadProgress = engine.downloadProgress
+            loadingStatusMessage = ""
+            logger.log("[WhisperService] setupModel SUCCESS: modelState=\(modelState) model=\(selectedModel.id)")
 
             // Persist selection
             if let variant = selectedModel.variant {
@@ -429,9 +399,12 @@ final class WhisperService {
             }
         } catch {
             progressTask.cancel()
+            logger.log("[WhisperService] setupModel FAILED: \(error) model=\(selectedModel.id)")
             guard activeEngine === engine else { return }
+            activeEngine = nil
             modelState = .unloaded
             downloadProgress = 0.0
+            loadingStatusMessage = ""
             if let appError = error as? AppError {
                 lastError = appError
             } else {
@@ -467,6 +440,7 @@ final class WhisperService {
         }
 
         await drainLingeringTranscriptionTask()
+        resetTranscriptionState()
 
         isRecording = false
         isTranscribing = false
@@ -500,7 +474,6 @@ final class WhisperService {
         }
 
         resetTranscriptionState()
-        ttsService.stop()
 
         do {
             try await engine.startRecording()
@@ -532,26 +505,9 @@ final class WhisperService {
         translationTask?.cancel()
         translationTask = nil
         activeEngine?.stopRecording()
-        ttsService.stop()
         isRecording = false
         isTranscribing = false
         sessionState = .idle
-    }
-
-    private func stopRecordingForTTSIfNeeded() {
-        guard sessionState == .recording
-            || sessionState == .interrupted
-            || sessionState == .starting
-            || isRecording
-            || isTranscribing else { return }
-
-        sessionState = .stopping
-        cancelAndTrackTranscriptionTask()
-        activeEngine?.stopRecording()
-        isRecording = false
-        isTranscribing = false
-        sessionState = .idle
-        micStoppedForTTS = true
     }
 
     func clearTranscription() {
@@ -563,9 +519,70 @@ final class WhisperService {
         lastError = nil
     }
 
-    #if DEBUG
+    // MARK: - File Transcription
+
+    /// Whether a file transcription is currently in progress.
+    private(set) var isTranscribingFile: Bool = false
+
+    /// Transcribe an audio file at the given URL (any format AVAudioFile supports).
+    func transcribeFile(_ url: URL) {
+        guard !isTranscribingFile else { return }
+        guard let engine = activeEngine, engine.modelState == .loaded else {
+            lastError = .modelNotReady
+            return
+        }
+
+        resetTranscriptionState()
+        isTranscribingFile = true
+
+        cancelAndTrackTranscriptionTask()
+        transcriptionTask = Task {
+            // Note: do NOT call drainLingeringTranscriptionTask() here — it would
+            // see transcriptionTask == self and deadlock awaiting its own result.
+            // cancelAndTrackTranscriptionTask() above already cancelled the old task.
+
+            // Security-scoped resource access must span the entire read operation.
+            let didAccess = url.startAccessingSecurityScopedResource()
+            defer {
+                if didAccess { url.stopAccessingSecurityScopedResource() }
+                isTranscribingFile = false
+            }
+            do {
+                let samples = try Self.loadAudioFile(url: url)
+                let audioDuration = Double(samples.count) / Double(Self.sampleRate)
+                self.bufferSeconds = audioDuration
+                let options = ASRTranscriptionOptions(
+                    language: nil,
+                    withTimestamps: enableTimestamps
+                )
+                let startTime = CFAbsoluteTimeGetCurrent()
+                let result = try await engine.transcribe(audioArray: samples, options: options)
+                let elapsedMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+                guard !Task.isCancelled else { return }
+                let words = max(0, result.text.split(whereSeparator: \.isWhitespace).count)
+                let elapsedSeconds = elapsedMs / 1000.0
+                if elapsedSeconds > 0, words > 0 {
+                    tokensPerSecond = Double(words) / elapsedSeconds
+                } else {
+                    tokensPerSecond = 0
+                }
+                confirmedSegments = result.segments
+                let segmentText = result.segments.map(\.text).joined(separator: " ")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                confirmedText = segmentText.isEmpty
+                    ? result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    : segmentText
+            } catch {
+                guard !Task.isCancelled else { return }
+                lastError = .transcriptionFailed(underlying: error)
+            }
+        }
+    }
+
     /// Transcribe a WAV file from the given path (for testing / E2E validation).
     func transcribeTestFile(_ path: String) {
+        let logger = InferenceLogger.shared
+        logger.log("transcribeTestFile called, path=\(path) model=\(selectedModel.id)")
         NSLog("[E2E] transcribeTestFile called, path=\(path)")
         NSLog("[E2E] activeEngine=\(String(describing: activeEngine)), modelState=\(String(describing: activeEngine?.modelState))")
         if e2eTranscribeInFlight {
@@ -578,6 +595,7 @@ final class WhisperService {
             writeE2EResult(
                 transcript: "",
                 translatedText: "",
+                tokensPerSecond: 0,
                 durationMs: 0,
                 error: "model not ready"
             )
@@ -590,11 +608,14 @@ final class WhisperService {
         cancelAndTrackTranscriptionTask()
         transcriptionTask = Task {
             defer { e2eTranscribeInFlight = false }
+            // Note: do NOT call drainLingeringTranscriptionTask() here — it would
+            // see transcriptionTask == self and deadlock awaiting its own result.
+            // cancelAndTrackTranscriptionTask() above already cancelled the old task.
             do {
-                NSLog("[E2E] Loading WAV file...")
-                let samples = try Self.loadWavFile(path: path)
+                NSLog("[E2E] Loading audio file...")
+                let samples = try Self.loadAudioFile(url: URL(fileURLWithPath: path))
                 let audioDuration = Double(samples.count) / Double(Self.sampleRate)
-                NSLog("[E2E] WAV loaded: \(samples.count) samples (\(audioDuration)s)")
+                NSLog("[E2E] Audio loaded: \(samples.count) samples (\(audioDuration)s)")
                 self.bufferSeconds = audioDuration
                 // Keep language auto-detection for E2E to avoid model-specific decode regressions
                 // (e.g., repetition loops or empty output under forced language).
@@ -608,6 +629,13 @@ final class WhisperService {
                 let result = try await engine.transcribe(audioArray: samples, options: options)
                 let elapsedMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
                 guard !Task.isCancelled else { return }
+                let words = max(0, result.text.split(whereSeparator: \.isWhitespace).count)
+                let elapsedSeconds = elapsedMs / 1000.0
+                if elapsedSeconds > 0, words > 0 {
+                    tokensPerSecond = Double(words) / elapsedSeconds
+                } else {
+                    tokensPerSecond = 0
+                }
                 NSLog("[E2E] Transcription complete: text='\(result.text)', segments=\(result.segments.count)")
                 confirmedSegments = result.segments
                 let segmentText = result.segments.map(\.text).joined(separator: " ")
@@ -622,15 +650,13 @@ final class WhisperService {
                     let translatedReady = !translationEnabled
                         || confirmedText.isEmpty
                         || !translatedConfirmedText.isEmpty
-                    let ttsReady = !speakTranslatedAudio
-                        || translatedConfirmedText.isEmpty
-                        || ttsService.latestEvidenceFilePath() != nil
-                    if translatedReady && ttsReady { break }
+                    if translatedReady { break }
                     try? await Task.sleep(for: .milliseconds(250))
                 }
                 writeE2EResult(
                     transcript: confirmedText,
                     translatedText: translatedConfirmedText,
+                    tokensPerSecond: tokensPerSecond,
                     durationMs: elapsedMs,
                     error: nil
                 )
@@ -641,6 +667,7 @@ final class WhisperService {
                 writeE2EResult(
                     transcript: "",
                     translatedText: "",
+                    tokensPerSecond: 0,
                     durationMs: 0,
                     error: error.localizedDescription
                 )
@@ -652,6 +679,7 @@ final class WhisperService {
         writeE2EResult(
             transcript: "",
             translatedText: "",
+            tokensPerSecond: 0,
             durationMs: 0,
             error: reason
         )
@@ -660,6 +688,7 @@ final class WhisperService {
     private func writeE2EResult(
         transcript: String,
         translatedText: String,
+        tokensPerSecond: Double,
         durationMs: Double,
         error: String?
     ) {
@@ -676,18 +705,14 @@ final class WhisperService {
             && normalizedSource != normalizedTarget
         let translationReady = !expectsTranslation
             || !translatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let expectsTTSEvidence = speakTranslatedAudio && expectsTranslation
-        let ttsAudioPath = ttsService.latestEvidenceFilePath()
-        let ttsReady = !expectsTTSEvidence || (ttsAudioPath != nil)
         let isOmnilingual = selectedModel.id.lowercased().contains("omnilingual")
         let hasKeywordHit = keywords.contains { lower.contains($0) }
         let hasMeaningfulText = transcript.unicodeScalars.contains { CharacterSet.alphanumerics.contains($0) }
 
-        // pass = core transcription quality only; translation/TTS tracked separately
+        // pass = core transcription quality only; translation tracked separately
         let pass = error == nil
             && !transcript.isEmpty
             && (isOmnilingual ? hasMeaningfulText : hasKeywordHit)
-            && ttsMicGuardViolations == 0
         let payload: [String: Any?] = [
             "model_id": selectedModel.id,
             "engine": selectedModel.inferenceMethodLabel,
@@ -696,13 +721,8 @@ final class WhisperService {
             "translation_warning": translationWarning,
             "expects_translation": expectsTranslation,
             "translation_ready": translationReady,
-            "tts_audio_path": ttsAudioPath,
-            "expects_tts_evidence": expectsTTSEvidence,
-            "tts_ready": ttsReady,
-            "tts_start_count": ttsStartCount,
-            "tts_mic_guard_violations": ttsMicGuardViolations,
-            "mic_stopped_for_tts": micStoppedForTTS,
             "pass": pass,
+            "tokens_per_second": tokensPerSecond,
             "duration_ms": durationMs,
             "timestamp": ISO8601DateFormatter().string(from: Date()),
             "error": error
@@ -722,24 +742,79 @@ final class WhisperService {
         }
     }
 
-    /// Load a 16kHz mono WAV file and return normalized Float samples in [-1, 1].
-    private static func loadWavFile(path: String) throws -> [Float] {
-        let url = URL(fileURLWithPath: path)
+    /// Load any audio file and return 16kHz mono Float32 samples in [-1, 1].
+    /// Uses AVAudioConverter to handle arbitrary sample rates and channel counts.
+    private static func loadAudioFile(url: URL) throws -> [Float] {
         let file = try AVAudioFile(forReading: url)
-        let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
-        let frameCount = AVAudioFrameCount(file.length)
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+        let fileFormat = file.processingFormat
+
+        guard let targetFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: 16000,
+            channels: 1,
+            interleaved: false
+        ) else {
             throw NSError(domain: "WhisperService", code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Failed to create audio buffer"])
+                          userInfo: [NSLocalizedDescriptionKey: "Cannot create target audio format"])
         }
-        try file.read(into: buffer)
-        guard let floatData = buffer.floatChannelData else {
+
+        let fileFrameCount = AVAudioFrameCount(file.length)
+        guard fileFrameCount > 0 else {
+            throw NSError(domain: "WhisperService", code: -3,
+                          userInfo: [NSLocalizedDescriptionKey: "Audio file is empty"])
+        }
+
+        // Read file in its native processing format
+        guard let sourceBuffer = AVAudioPCMBuffer(pcmFormat: fileFormat, frameCapacity: fileFrameCount) else {
+            throw NSError(domain: "WhisperService", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Failed to create source audio buffer"])
+        }
+        try file.read(into: sourceBuffer)
+
+        // If already 16kHz mono Float32, return directly
+        if fileFormat.sampleRate == 16000 && fileFormat.channelCount == 1
+            && fileFormat.commonFormat == .pcmFormatFloat32 {
+            guard let floatData = sourceBuffer.floatChannelData else {
+                throw NSError(domain: "WhisperService", code: -2,
+                              userInfo: [NSLocalizedDescriptionKey: "No float channel data"])
+            }
+            return Array(UnsafeBufferPointer(start: floatData[0], count: Int(sourceBuffer.frameLength)))
+        }
+
+        // Convert to 16kHz mono Float32
+        guard let converter = AVAudioConverter(from: fileFormat, to: targetFormat) else {
+            throw NSError(domain: "WhisperService", code: -4,
+                          userInfo: [NSLocalizedDescriptionKey: "Cannot create audio converter from \(fileFormat) to 16kHz mono"])
+        }
+
+        let ratio = 16000.0 / fileFormat.sampleRate
+        let outputFrameCount = AVAudioFrameCount(ceil(Double(sourceBuffer.frameLength) * ratio))
+        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputFrameCount) else {
+            throw NSError(domain: "WhisperService", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Failed to create output audio buffer"])
+        }
+
+        var conversionError: NSError?
+        var inputConsumed = false
+        converter.convert(to: outputBuffer, error: &conversionError) { _, outStatus in
+            if inputConsumed {
+                outStatus.pointee = .endOfStream
+                return nil
+            }
+            outStatus.pointee = .haveData
+            inputConsumed = true
+            return sourceBuffer
+        }
+        if let conversionError {
+            throw conversionError
+        }
+
+        guard let floatData = outputBuffer.floatChannelData, outputBuffer.frameLength > 0 else {
             throw NSError(domain: "WhisperService", code: -2,
-                          userInfo: [NSLocalizedDescriptionKey: "No float channel data"])
+                          userInfo: [NSLocalizedDescriptionKey: "Audio conversion produced no output"])
         }
-        return Array(UnsafeBufferPointer(start: floatData[0], count: Int(buffer.frameLength)))
+        return Array(UnsafeBufferPointer(start: floatData[0], count: Int(outputBuffer.frameLength)))
     }
-    #endif
 
     var fullTranscriptionText: String {
         let currentChunkConfirmed = normalizedJoinedText(from: confirmedSegments)
@@ -794,15 +869,18 @@ final class WhisperService {
         while isRecording && isTranscribing && !Task.isCancelled {
             try? await Task.sleep(for: .milliseconds(100))
 
-            // Update energy visualization
-            bufferEnergy = engine.relativeEnergy
-            bufferSeconds = Double(engine.audioSamples.count) / Double(Self.sampleRate)
+            refreshRealtimeMeters(engine: engine)
 
             // Poll streaming result
             if let result = engine.getStreamingResult() {
-                unconfirmedSegments = result.segments
-                hypothesisText = normalizedJoinedText(from: result.segments)
-                scheduleTranslationUpdate()
+                let nextHypothesis = normalizedJoinedText(from: result.segments)
+                if unconfirmedSegments != result.segments {
+                    unconfirmedSegments = result.segments
+                }
+                if hypothesisText != nextHypothesis {
+                    hypothesisText = nextHypothesis
+                    scheduleTranslationUpdate()
+                }
 
                 // Endpoint detection → finalize utterance as a new chunk
                 if engine.isEndpointDetected() {
@@ -828,9 +906,11 @@ final class WhisperService {
     }
 
     private func transcribeCurrentBuffer(engine: ASREngine) async throws {
+        let logger = InferenceLogger.shared
         let currentBuffer = engine.audioSamples
         let nextBufferSize = currentBuffer.count - lastBufferSize
         let nextBufferSeconds = Float(nextBufferSize) / Self.sampleRate
+        refreshRealtimeMeters(engine: engine)
 
         let effectiveDelay = adaptiveDelay()
         guard nextBufferSeconds > Float(effectiveDelay) else {
@@ -846,28 +926,25 @@ final class WhisperService {
             if !voiceDetected {
                 consecutiveSilenceCount += 1
                 lastBufferSize = currentBuffer.count
+                if consecutiveSilenceCount == 1 || consecutiveSilenceCount % 10 == 0 {
+                    logger.log("VAD silence #\(consecutiveSilenceCount) totalBuffer=\(currentBuffer.count) (\(String(format: "%.1f", Float(currentBuffer.count) / Self.sampleRate))s)")
+                }
                 return
             }
             consecutiveSilenceCount = 0
         }
 
-        lastBufferSize = currentBuffer.count
-
-        // Update energy visualization
-        bufferEnergy = engine.relativeEnergy
-        bufferSeconds = Double(currentBuffer.count) / Double(Self.sampleRate)
-
         // Chunk-based windowing: process audio in fixed-size chunks to prevent
         // models from receiving unbounded audio. When the buffer grows past the
         // current chunk boundary, finalize the hypothesis and start a new chunk.
         let bufferEndSeconds = Float(currentBuffer.count) / Self.sampleRate
-        var chunkEndSeconds = lastConfirmedSegmentEndSeconds + Self.maxChunkSeconds
+        var chunkEndSeconds = lastConfirmedSegmentEndSeconds + maxChunkSeconds
 
         if bufferEndSeconds > chunkEndSeconds {
             finalizeCurrentChunk()
             lastConfirmedSegmentEndSeconds = chunkEndSeconds
             // Recompute for the new chunk so we don't produce an empty slice
-            chunkEndSeconds = lastConfirmedSegmentEndSeconds + Self.maxChunkSeconds
+            chunkEndSeconds = lastConfirmedSegmentEndSeconds + maxChunkSeconds
         }
 
         // Slice audio for the current chunk window
@@ -877,12 +954,27 @@ final class WhisperService {
         let audioSamples = Array(currentBuffer[sliceStartSample..<sliceEndSample])
         guard !audioSamples.isEmpty else { return }
 
+        // RMS energy gate: skip inference on near-silence audio to avoid
+        // SenseVoice hallucinations ("I.", "Yeah.", "The.") and save CPU.
+        // NOTE: lastBufferSize is NOT updated on skip — this ensures that when
+        // speech resumes after silence, nextBufferSeconds is already large enough
+        // to pass the delay guard immediately, giving near-instant response.
+        let sliceRMS = sqrt(audioSamples.reduce(Float(0)) { $0 + $1 * $1 } / Float(audioSamples.count))
+        if sliceRMS < Self.minInferenceRMS {
+            logger.log("SKIP low-energy slice rms=\(String(format: "%.4f", sliceRMS)) < \(Self.minInferenceRMS)")
+            try await Task.sleep(for: .milliseconds(500))
+            return
+        }
+
+        lastBufferSize = currentBuffer.count
+
         let options = ASRTranscriptionOptions(
             withTimestamps: enableTimestamps,
             temperature: 0.0
         )
 
         let sliceDurationSeconds = Float(audioSamples.count) / Self.sampleRate
+        logger.log("BUFFER SUBMIT model=\(selectedModel.id) sliceStart=\(String(format: "%.2f", sliceStartSeconds))s sliceEnd=\(String(format: "%.2f", Float(sliceEndSample) / Self.sampleRate))s sliceSamples=\(audioSamples.count) sliceDuration=\(String(format: "%.2f", sliceDurationSeconds))s rms=\(String(format: "%.4f", sliceRMS)) totalBuffer=\(currentBuffer.count) (\(String(format: "%.1f", Float(currentBuffer.count) / Self.sampleRate))s)")
         let startTime = CFAbsoluteTimeGetCurrent()
         let result = try await engine.transcribe(audioArray: audioSamples, options: options)
         let elapsed = CFAbsoluteTimeGetCurrent() - startTime
@@ -896,6 +988,7 @@ final class WhisperService {
 
         NSLog("[WhisperService] chunk inference: %.1fs audio in %.2fs (ratio %.1fx, %d words)",
               sliceDurationSeconds, elapsed, Double(sliceDurationSeconds) / elapsed, wordCount)
+        logger.log("BUFFER RESULT model=\(selectedModel.id) elapsed=\(String(format: "%.3f", elapsed))s rtf=\(String(format: "%.2f", elapsed / Double(sliceDurationSeconds))) words=\(wordCount) segments=\(result.segments.count) text=\"\(String(result.text.prefix(200)))\"")
 
         processTranscriptionResult(result, sliceOffset: sliceStartSeconds)
     }
@@ -916,13 +1009,55 @@ final class WhisperService {
         } else if consecutiveSilenceCount > 2 {
             return realtimeDelayInterval * 2.0
         }
+        // For sherpa-onnx offline (SenseVoice, Moonshine): aggressive delay to
+        // limit inferences to ~2 per 8s chunk. These models re-decode the full
+        // chunk each time (RTF ~0.18 on iPad A13), so 4 passes burn ~2.3s CPU.
+        // By deferring the first inference to 2s and spacing by 3s, we get:
+        //   Pass 1 at ~2s (0.35s decode) + Pass 2 at ~5s (0.85s decode) = ~1.2s CPU.
+        // Schedule: 0-2s: 2.0s, 2-5s: 3.0s, 5+s: 4.0s (effectively waits for chunk end)
+        if selectedModel.engineType == .sherpaOnnxOffline {
+            let chunkElapsed = Double(
+                Float(lastBufferSize) / Self.sampleRate - lastConfirmedSegmentEndSeconds
+            )
+            if chunkElapsed > 5 {
+                return 4.0
+            } else if chunkElapsed > 2 {
+                return 3.0
+            }
+            return 2.0
+        }
         return realtimeDelayInterval
+    }
+
+    /// Update render-facing meters at a fixed cadence with bounded payload size.
+    /// This keeps live UI smooth while preventing large array churn on every loop.
+    private func refreshRealtimeMeters(engine: ASREngine, force: Bool = false) {
+        let now = CFAbsoluteTimeGetCurrent()
+        if !force, now - lastUIMeterUpdateTimestamp < Self.uiMeterUpdateInterval {
+            return
+        }
+        lastUIMeterUpdateTimestamp = now
+
+        let sampleCount = engine.audioSamples.count
+        let nextBufferSeconds = Double(sampleCount) / Double(Self.sampleRate)
+        if bufferSeconds != nextBufferSeconds {
+            bufferSeconds = nextBufferSeconds
+        }
+
+        let nextEnergy = Array(engine.relativeEnergy.suffix(Self.displayEnergyFrameLimit))
+        if bufferEnergy != nextEnergy {
+            bufferEnergy = nextEnergy
+        }
     }
 
     private func processTranscriptionResult(_ result: ASRResult, sliceOffset: Float = 0) {
         let newSegments = result.segments
 
-        if enableEagerMode, !prevUnconfirmedSegments.isEmpty {
+        // Eager mode only works for multi-segment models (WhisperKit).
+        // Single-segment models (SenseVoice, Moonshine) always return 1 segment
+        // whose text changes every cycle, so segment comparison never confirms.
+        let useEager = enableEagerMode && selectedModel.engineType != .sherpaOnnxOffline
+        if useEager, !prevUnconfirmedSegments.isEmpty {
             var matchCount = 0
             for (prevSeg, newSeg) in zip(prevUnconfirmedSegments, newSegments) {
                 if normalizedSegmentText(prevSeg.text)
@@ -954,11 +1089,20 @@ final class WhisperService {
 
         // Build confirmed text: completed chunks + within-chunk confirmed segments
         let withinChunkConfirmed = normalizedJoinedText(from: confirmedSegments)
-        confirmedText = [completedChunksText, withinChunkConfirmed]
+        let nextConfirmedText = [completedChunksText, withinChunkConfirmed]
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
-        hypothesisText = normalizedJoinedText(from: unconfirmedSegments)
-        scheduleTranslationUpdate()
+        let nextHypothesisText = normalizedJoinedText(from: unconfirmedSegments)
+        let transcriptionChanged = confirmedText != nextConfirmedText || hypothesisText != nextHypothesisText
+        if confirmedText != nextConfirmedText {
+            confirmedText = nextConfirmedText
+        }
+        if hypothesisText != nextHypothesisText {
+            hypothesisText = nextHypothesisText
+        }
+        if transcriptionChanged {
+            scheduleTranslationUpdate()
+        }
     }
 
     /// Finalize the current chunk: combine all segments into completed text and reset per-chunk state.
@@ -975,9 +1119,17 @@ final class WhisperService {
         confirmedSegments = []
         unconfirmedSegments = []
         prevUnconfirmedSegments = []
-        confirmedText = completedChunksText
-        hypothesisText = ""
-        scheduleTranslationUpdate()
+        let nextConfirmedText = completedChunksText
+        let transcriptionChanged = confirmedText != nextConfirmedText || !hypothesisText.isEmpty
+        if confirmedText != nextConfirmedText {
+            confirmedText = nextConfirmedText
+        }
+        if !hypothesisText.isEmpty {
+            hypothesisText = ""
+        }
+        if transcriptionChanged {
+            scheduleTranslationUpdate()
+        }
     }
 
     private func normalizedJoinedText(from segments: [ASRSegment]) -> String {
@@ -1003,59 +1155,21 @@ final class WhisperService {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    // MARK: - Native Translation / TTS
+    // MARK: - Native Translation
 
-    private func resetTranslationState(stopTTS: Bool) {
+    private func resetTranslationState() {
         translationTask?.cancel()
         translationTask = nil
         translatedConfirmedText = ""
         translatedHypothesisText = ""
         translationWarning = nil
-        lastSpokenTranslatedConfirmed = ""
         lastTranslationInput = nil
-        if stopTTS {
-            ttsService.stop()
-        }
-    }
-
-    private func applyTranslationWarning(
-        _ warning: String,
-        stopTTS: Bool = false,
-        resetSpokenCache: Bool = false
-    ) {
-        translationWarning = warning
-        if resetSpokenCache {
-            lastSpokenTranslatedConfirmed = ""
-        }
-        if stopTTS {
-            ttsService.stop()
-        }
-    }
-
-    @discardableResult
-    private func enforceMicStoppedForTTS() -> Bool {
-        stopRecordingForTTSIfNeeded()
-
-        if isRecording || isTranscribing || sessionState == .recording || sessionState == .starting
-            || sessionState == .interrupted
-        {
-            ttsMicGuardViolations += 1
-            activeEngine?.stopRecording()
-            isRecording = false
-            isTranscribing = false
-            sessionState = .idle
-            micStoppedForTTS = true
-        }
-
-        return !(isRecording || isTranscribing || sessionState == .recording
-            || sessionState == .starting || sessionState == .interrupted)
     }
 
     private func scheduleTranslationUpdate() {
         translationTask?.cancel()
 
         guard translationEnabled else {
-            resetTranslationState(stopTTS: false)
             return
         }
 
@@ -1075,7 +1189,7 @@ final class WhisperService {
 
         #if targetEnvironment(simulator)
         // iOS Simulator cannot run the native Translation framework pipeline.
-        // Keep translation/TTS flows testable by using source text fallback inline.
+        // Keep translation flows testable by using source text fallback inline.
         let simulatorConfirmed = normalizeDisplayText(confirmedSnapshot)
         let simulatorHypothesis = normalizeDisplayText(hypothesisSnapshot)
         translatedConfirmedText = simulatorConfirmed
@@ -1084,14 +1198,12 @@ final class WhisperService {
             ? nil
             : "On-device Translation API is unavailable on iOS Simulator. Using source text fallback."
         lastTranslationInput = (confirmedSnapshot, hypothesisSnapshot)
-        speakTranslatedDeltaIfNeeded(from: simulatorConfirmed)
         #else
         if sourceCode.caseInsensitiveCompare(targetCode) == .orderedSame {
             translatedConfirmedText = normalizeDisplayText(confirmedSnapshot)
             translatedHypothesisText = normalizeDisplayText(hypothesisSnapshot)
             translationWarning = nil
             lastTranslationInput = (confirmedSnapshot, hypothesisSnapshot)
-            speakTranslatedDeltaIfNeeded(from: translatedConfirmedText)
             return
         }
 
@@ -1123,7 +1235,7 @@ final class WhisperService {
             } catch let appError as AppError {
                 guard !Task.isCancelled else { return }
                 // Fallback when native translation is unavailable:
-                // keep UI/TTS functional by reusing source text and surfacing warning inline.
+                // keep UI functional by reusing source text and surfacing warning inline.
                 self.translatedConfirmedText = self.normalizeDisplayText(confirmedSnapshot)
                 self.translatedHypothesisText = self.normalizeDisplayText(hypothesisSnapshot)
                 warningMessage = appError.localizedDescription
@@ -1136,64 +1248,26 @@ final class WhisperService {
 
             self.translationWarning = warningMessage
             self.lastTranslationInput = (confirmedSnapshot, hypothesisSnapshot)
-            self.speakTranslatedDeltaIfNeeded(from: self.translatedConfirmedText)
         }
         #endif
     }
 
-    private func speakTranslatedDeltaIfNeeded(from translatedConfirmed: String) {
-        guard speakTranslatedAudio else { return }
-
-        let normalized = normalizeDisplayText(translatedConfirmed)
-        guard !normalized.isEmpty else { return }
-
-        var delta = normalized
-        if !lastSpokenTranslatedConfirmed.isEmpty,
-           normalized.hasPrefix(lastSpokenTranslatedConfirmed) {
-            delta = normalizeDisplayText(
-                String(normalized.dropFirst(lastSpokenTranslatedConfirmed.count))
-            )
-        }
-
-        guard !delta.isEmpty else { return }
-
-        guard enforceMicStoppedForTTS() else {
-            applyTranslationWarning(
-                "Microphone is still active; skipped TTS playback to avoid feedback loop.",
-                stopTTS: true
-            )
-            return
-        }
-
-        ttsStartCount += 1
-        ttsService.speak(
-            text: delta,
-            languageCode: translationTargetLanguageCode,
-            rate: ttsRate,
-            voiceIdentifier: ttsVoiceIdentifier
-        )
-        lastSpokenTranslatedConfirmed = normalized
-    }
-
     private func resetTranscriptionState() {
         cancelAndTrackTranscriptionTask()
-        resetTranslationState(stopTTS: false)
+        resetTranslationState()
         lastBufferSize = 0
         lastConfirmedSegmentEndSeconds = 0
         confirmedSegments = []
         unconfirmedSegments = []
         confirmedText = ""
         hypothesisText = ""
-        isSpeakingTTS = false
-        ttsStartCount = 0
-        ttsMicGuardViolations = 0
-        micStoppedForTTS = false
         completedChunksText = ""
         bufferEnergy = []
         bufferSeconds = 0
         tokensPerSecond = 0
         prevUnconfirmedSegments = []
         consecutiveSilenceCount = 0
+        lastUIMeterUpdateTimestamp = 0
         lastError = nil
     }
 
@@ -1223,10 +1297,6 @@ final class WhisperService {
     func testSetRecordingFlags(isRecording: Bool, isTranscribing: Bool) {
         self.isRecording = isRecording
         self.isTranscribing = isTranscribing
-    }
-
-    func testStopRecordingForTTSIfNeeded() {
-        stopRecordingForTTSIfNeeded()
     }
 
     func testSimulateInterruption(began: Bool) {

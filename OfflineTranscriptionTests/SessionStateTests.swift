@@ -146,27 +146,4 @@ final class SessionStateTests: XCTestCase {
         XCTAssertFalse(s.isRecording)
     }
 
-    func testTTSGuardStopsRecordingSession() {
-        let s = WhisperService()
-        s.testSetSessionState(.recording)
-        s.testSetRecordingFlags(isRecording: true, isTranscribing: true)
-
-        s.testStopRecordingForTTSIfNeeded()
-
-        XCTAssertEqual(s.sessionState, .idle)
-        XCTAssertFalse(s.isRecording)
-        XCTAssertFalse(s.isTranscribing)
-        XCTAssertTrue(s.micStoppedForTTS)
-    }
-
-    func testTTSGuardNoOpWhenIdle() {
-        let s = WhisperService()
-        XCTAssertEqual(s.sessionState, .idle)
-        XCTAssertFalse(s.micStoppedForTTS)
-
-        s.testStopRecordingForTTSIfNeeded()
-
-        XCTAssertEqual(s.sessionState, .idle)
-        XCTAssertFalse(s.micStoppedForTTS)
-    }
 }

@@ -12,7 +12,6 @@ enum AppError: LocalizedError {
     case audioInterrupted
     case translationUnavailable
     case translationFailed(underlying: Error)
-    case ttsFailed(underlying: Error)
 
     var errorDescription: String? {
         switch self {
@@ -38,8 +37,6 @@ enum AppError: LocalizedError {
             return "Native translation is unavailable. Requires iOS 18.0+ with the Translation framework."
         case .translationFailed(let error):
             return "Translation failed: \(error.localizedDescription)"
-        case .ttsFailed(let error):
-            return "Text-to-speech failed: \(error.localizedDescription)"
         }
     }
 }

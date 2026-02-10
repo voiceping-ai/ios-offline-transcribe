@@ -4,8 +4,12 @@ struct TranscriptionView: View {
     @Environment(WhisperService.self) private var whisperService
     @State private var viewModel: TranscriptionViewModel?
     @State private var showSettings = false
+
     @State private var recordingStartDate: Date?
     @State private var didAutoTest = false
+    @State private var lastAutoScrollAt: Date = .distantPast
+
+    private let autoScrollInterval: TimeInterval = 0.25
 
     var body: some View {
         VStack(spacing: 0) {
@@ -66,13 +70,24 @@ struct TranscriptionView: View {
                     }
                     .padding()
                 }
-                .onChange(of: viewModel?.fullText ?? "") { _, _ in
+                .onChange(of: viewModel?.confirmedText ?? "") { _, _ in
                     guard viewModel?.isRecording == true else { return }
+                    let now = Date()
+                    guard now.timeIntervalSince(lastAutoScrollAt) >= autoScrollInterval else { return }
+                    lastAutoScrollAt = now
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                }
+                .onChange(of: viewModel?.hypothesisText ?? "") { _, _ in
+                    guard viewModel?.isRecording == true else { return }
+                    let now = Date()
+                    guard now.timeIntervalSince(lastAutoScrollAt) >= autoScrollInterval else { return }
+                    lastAutoScrollAt = now
                     proxy.scrollTo("bottom", anchor: .bottom)
                 }
                 .onChange(of: viewModel?.isRecording ?? false) { _, isRecording in
                     if isRecording {
                         recordingStartDate = Date()
+                        lastAutoScrollAt = Date()
                         proxy.scrollTo("bottom", anchor: .bottom)
                     } else {
                         recordingStartDate = nil
@@ -146,19 +161,29 @@ struct TranscriptionView: View {
                 .padding(.vertical, 4)
             }
 
+            // File transcription progress
+            if let vm = viewModel, vm.isTranscribingFile {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Transcribing file...")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+
             // Controls
             HStack(spacing: 32) {
-                #if DEBUG
-                if let vm = viewModel, !vm.isRecording {
+                if let vm = viewModel, !vm.isRecording && !vm.isTranscribingFile {
                     Button {
-                        vm.transcribeTestFile("/tmp/test_speech.wav")
+                        let wavPath = Bundle.main.path(forResource: "test_speech", ofType: "wav") ?? "/tmp/test_speech.wav"
+                        vm.transcribeTestFile(wavPath)
                     } label: {
                         Image(systemName: "doc.text.fill")
                             .font(.title2)
                     }
                     .accessibilityIdentifier("test_file_button")
                 }
-                #endif
 
                 RecordButton(
                     isRecording: viewModel?.isRecording ?? false
@@ -167,6 +192,7 @@ struct TranscriptionView: View {
                         await viewModel?.toggleRecording()
                     }
                 }
+                .disabled(viewModel?.isTranscribingFile ?? false)
 
                 Button {
                     showSettings = true
