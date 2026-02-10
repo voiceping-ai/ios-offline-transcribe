@@ -28,6 +28,21 @@ final class WhisperKitEngine: ASREngine {
         sessionStartEnergyIndex = kit.audioProcessor.relativeEnergy.count
     }
 
+    private var preferredComputeOptions: ModelComputeOptions {
+        #if targetEnvironment(simulator)
+        // Simulator has no Neural Engine; GPU-backed compute is more stable for long decode.
+        return ModelComputeOptions(
+            audioEncoderCompute: .cpuAndGPU,
+            textDecoderCompute: .cpuAndGPU
+        )
+        #else
+        return ModelComputeOptions(
+            audioEncoderCompute: .cpuAndNeuralEngine,
+            textDecoderCompute: .cpuAndNeuralEngine
+        )
+        #endif
+    }
+
     // MARK: - Model Management
 
     private func modelFolderKey(for variant: String) -> String {
@@ -76,10 +91,7 @@ final class WhisperKitEngine: ASREngine {
             let config = WhisperKitConfig(
                 model: variant,
                 modelFolder: modelFolderURL.path(),
-                computeOptions: ModelComputeOptions(
-                    audioEncoderCompute: .cpuAndNeuralEngine,
-                    textDecoderCompute: .cpuAndNeuralEngine
-                ),
+                computeOptions: preferredComputeOptions,
                 verbose: true,
                 logLevel: .info,
                 prewarm: true,
@@ -123,10 +135,7 @@ final class WhisperKitEngine: ASREngine {
             let config = WhisperKitConfig(
                 model: variant,
                 modelFolder: savedFolder,
-                computeOptions: ModelComputeOptions(
-                    audioEncoderCompute: .cpuAndNeuralEngine,
-                    textDecoderCompute: .cpuAndNeuralEngine
-                ),
+                computeOptions: preferredComputeOptions,
                 verbose: true,
                 logLevel: .info,
                 prewarm: true,
@@ -212,22 +221,24 @@ final class WhisperKitEngine: ASREngine {
 
     func transcribe(audioArray: [Float], options: ASRTranscriptionOptions) async throws -> ASRResult {
         guard let whisperKit else { throw AppError.modelNotReady }
+        let logger = InferenceLogger.shared
 
         let workerCount = min(4, ProcessInfo.processInfo.activeProcessorCount)
-        let seekClip: [Float] = [0]
+        let decodeTemperature = max(options.temperature, 0.2)
         let decodingOptions = DecodingOptions(
             verbose: false,
             task: .transcribe,
             language: options.language,
-            temperature: options.temperature,
-            temperatureFallbackCount: 3,
-            sampleLength: 224,
-            usePrefillPrompt: true,
-            usePrefillCache: true,
+            temperature: decodeTemperature,
+            temperatureFallbackCount: 5,
+            usePrefillPrompt: false,
+            usePrefillCache: false,
             skipSpecialTokens: true,
             withoutTimestamps: !options.withTimestamps,
             wordTimestamps: options.withTimestamps,
-            clipTimestamps: seekClip,
+            compressionRatioThreshold: 2.2,
+            logProbThreshold: -1.0,
+            noSpeechThreshold: 0.6,
             concurrentWorkerCount: workerCount
         )
 
@@ -241,17 +252,27 @@ final class WhisperKitEngine: ASREngine {
         }
 
         let primary = mapResult(result, timeOffset: 0, startingId: 0)
-        if !primary.text.isEmpty {
+        let isLongAudio = audioArray.count >= 16000 * 18
+        if !primary.text.isEmpty, !isLongAudio {
             return primary
         }
 
-        // Fallback for some large variants: decode long clips in overlapping chunks.
+        // For long audio, also run chunked decode and keep the higher-quality text.
         let chunked = try await transcribeChunked(
             whisperKit: whisperKit,
             audioArray: audioArray,
             decodingOptions: decodingOptions
         )
-        return chunked.text.isEmpty ? primary : chunked
+        if primary.text.isEmpty {
+            return chunked
+        }
+        if chunked.text.isEmpty {
+            return primary
+        }
+        let primaryScore = transcriptionQualityScore(primary.text)
+        let chunkedScore = transcriptionQualityScore(chunked.text)
+        logger.log("[WhisperKitEngine] long-audio quality primaryScore=\(primaryScore) chunkedScore=\(chunkedScore) primary=\"\(String(primary.text.prefix(120)))\" chunked=\"\(String(chunked.text.prefix(120)))\"")
+        return chunkedScore > primaryScore ? chunked : primary
     }
 
     private func mapResult(
@@ -283,8 +304,8 @@ final class WhisperKitEngine: ASREngine {
         audioArray: [Float],
         decodingOptions: DecodingOptions
     ) async throws -> ASRResult {
-        let chunkSize = 16000 * 30
-        let overlap = 16000
+        let chunkSize = 16000 * 12
+        let overlap = 16000 * 2
         var offset = 0
         var nextId = 0
         var combinedText: [String] = []
@@ -307,7 +328,19 @@ final class WhisperKitEngine: ASREngine {
                     startingId: nextId
                 )
                 if !mapped.text.isEmpty {
-                    combinedText.append(mapped.text)
+                    if let last = combinedText.last {
+                        if mapped.text == last {
+                            // duplicate overlap decode, ignore
+                        } else if mapped.text.hasPrefix(last) {
+                            combinedText[combinedText.count - 1] = mapped.text
+                        } else if last.hasPrefix(mapped.text) {
+                            // keep the longer prior decode
+                        } else {
+                            combinedText.append(mapped.text)
+                        }
+                    } else {
+                        combinedText.append(mapped.text)
+                    }
                     combinedSegments.append(contentsOf: mapped.segments)
                     nextId += mapped.segments.count
                     if detectedLanguage == nil {
@@ -325,5 +358,42 @@ final class WhisperKitEngine: ASREngine {
             segments: combinedSegments,
             language: detectedLanguage
         )
+    }
+
+    private func transcriptionQualityScore(_ text: String) -> Int {
+        let tokens = text
+            .lowercased()
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+        guard !tokens.isEmpty else { return Int.min }
+
+        let uniqueTokenCount = Set(tokens).count
+        var repeatedRunPenalty = 0
+        var runLength = 1
+        for idx in 1..<tokens.count {
+            if tokens[idx] == tokens[idx - 1] {
+                runLength += 1
+            } else {
+                if runLength > 2 {
+                    repeatedRunPenalty += runLength - 2
+                }
+                runLength = 1
+            }
+        }
+        if runLength > 2 {
+            repeatedRunPenalty += runLength - 2
+        }
+
+        let alphaNumericCount = text.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.count
+        var score = 0
+        score += tokens.count * 2
+        score += uniqueTokenCount * 3
+        score -= max(tokens.count - uniqueTokenCount, 0) * 2
+        score -= repeatedRunPenalty * 8
+        score += min(alphaNumericCount / 6, 40)
+        if uniqueTokenCount <= 4 && tokens.count >= 12 {
+            score -= 120
+        }
+        return score
     }
 }

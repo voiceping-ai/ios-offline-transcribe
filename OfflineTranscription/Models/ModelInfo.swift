@@ -219,9 +219,17 @@ struct ModelInfo: Identifiable, Hashable {
         return availableModels.first(where: { $0.id == "whisper-\(legacyId)" })
     }
 
+    /// Models filtered by device capability.
+    static var supportedModels: [ModelInfo] {
+        if FluidAudioEngine.isDeviceSupported {
+            return availableModels
+        }
+        return availableModels.filter { $0.engineType != .fluidAudio }
+    }
+
     /// Models grouped by family for UI display.
     static var modelsByFamily: [(family: ModelFamily, models: [ModelInfo])] {
-        let grouped = Dictionary(grouping: availableModels, by: \.family)
+        let grouped = Dictionary(grouping: supportedModels, by: \.family)
         let order: [ModelFamily] = [.whisper, .moonshine, .senseVoice, .zipformer, .omnilingual, .parakeet]
         return order.compactMap { family in
             guard let models = grouped[family], !models.isEmpty else { return nil }

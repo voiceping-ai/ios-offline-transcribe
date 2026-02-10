@@ -297,18 +297,11 @@ final class SherpaOnnxStreamingEngine: ASREngine {
     }
 
     private nonisolated static func preferredStreamingProviders() -> [String] {
-        ["coreml", "cpu"]
+        ["cpu"]
     }
 
     private nonisolated static func recommendedStreamingThreads() -> Int {
         let cores = max(ProcessInfo.processInfo.activeProcessorCount, 1)
-        switch cores {
-        case 0 ... 2:
-            return 1
-        case 3 ... 4:
-            return 2
-        default:
-            return 4
-        }
+        return cores <= 2 ? 1 : 2
     }
 }

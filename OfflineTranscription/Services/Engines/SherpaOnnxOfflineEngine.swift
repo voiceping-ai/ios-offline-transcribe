@@ -54,57 +54,23 @@ final class SherpaOnnxOfflineEngine: ASREngine {
 
         modelState = .loading
         let dirPath = modelDir.path
-        let providers = Self.preferredOfflineProviders()
-        var lastError: Error?
+        loadingStatusMessage = "Loading model..."
 
-        for provider in providers {
-            // Update status for UI
-            if provider == "coreml" {
-                loadingStatusMessage = "Trying CoreML acceleration..."
-            } else {
-                loadingStatusMessage = "Loading with CPU provider..."
-            }
+        do {
+            let recognizer = try await Task.detached {
+                return try Self.createRecognizer(config: config, modelDir: dirPath)
+            }.value
 
-            do {
-                let recognizer = try await Task.detached {
-                    return try Self.createRecognizerWithProvider(
-                        config: config, modelDir: dirPath, provider: provider
-                    )
-                }.value
-
-                // Probe CoreML to verify it actually works on this chip
-                if provider == "coreml" {
-                    loadingStatusMessage = "Probing CoreML compatibility..."
-                    let probeOK = await Task.detached {
-                        Self.probeRecognizer(recognizer)
-                    }.value
-                    if !probeOK {
-                        NSLog("[SherpaOnnxOfflineEngine] CoreML probe FAILED for %@, trying next provider", config.modelType.rawValue)
-                        loadingStatusMessage = "CoreML not available on this device"
-                        try? await Task.sleep(for: .milliseconds(500))
-                        continue
-                    }
-                    loadingStatusMessage = "CoreML acceleration active"
-                }
-
-                NSLog("[SherpaOnnxOfflineEngine] Created recognizer with provider=%@ model=%@", provider, config.modelType.rawValue)
-                self.recognizer = recognizer
-                self.currentModel = model
-                self.modelState = .loaded
-                self.loadingStatusMessage = ""
-                return
-            } catch {
-                lastError = error
-                NSLog("SherpaOnnxOfflineEngine: provider %@ failed: %@", provider, "\(error)")
-            }
+            NSLog("[SherpaOnnxOfflineEngine] Created recognizer for model=%@", config.modelType.rawValue)
+            self.recognizer = recognizer
+            self.currentModel = model
+            self.modelState = .loaded
+            self.loadingStatusMessage = ""
+        } catch {
+            modelState = .error
+            loadingStatusMessage = ""
+            throw AppError.modelLoadFailed(underlying: error)
         }
-
-        modelState = .error
-        loadingStatusMessage = ""
-        throw AppError.modelLoadFailed(underlying: lastError ?? NSError(
-            domain: "SherpaOnnxOfflineEngine", code: -6,
-            userInfo: [NSLocalizedDescriptionKey: "Failed to create recognizer for all providers"]
-        ))
     }
 
     func isModelDownloaded(_ model: ModelInfo) -> Bool {
@@ -147,8 +113,6 @@ final class SherpaOnnxOfflineEngine: ASREngine {
         // with raw floats and has better accuracy.
         let samples = audioArray
 
-        let isLongOmnilingual = modelType == .omnilingualCtc && samples.count > 16000 * 8
-
         let decodeStart = CFAbsoluteTimeGetCurrent()
         var result = await Task.detached {
             recognizer.decode(samples: samples, sampleRate: 16000)
@@ -158,7 +122,7 @@ final class SherpaOnnxOfflineEngine: ASREngine {
         var text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
         logger.log("  Decode #1 took \(String(format: "%.3f", decodeEnd - decodeStart))s result_len=\(text.count) lang=\"\(result.lang)\" text=\"\(String(text.prefix(200)))\"")
 
-        if text.isEmpty, modelType == .omnilingualCtc, !isLongOmnilingual {
+        if text.isEmpty, modelType == .omnilingualCtc {
             logger.log("  Omnilingual retry with int16 scaling...")
             let scaledSamples = samples.map { $0 * 32768.0 }
             let retryStart = CFAbsoluteTimeGetCurrent()
@@ -175,7 +139,8 @@ final class SherpaOnnxOfflineEngine: ASREngine {
             text = await Task.detached {
                 Self.decodeOmnilingualChunked(
                     recognizer: recognizer,
-                    samples: samples
+                    samples: samples,
+                    languageHint: options.language ?? "auto"
                 )
             }.value
             let chunkEnd = CFAbsoluteTimeGetCurrent()
@@ -229,12 +194,18 @@ final class SherpaOnnxOfflineEngine: ASREngine {
 
     private nonisolated static func decodeOmnilingualChunked(
         recognizer: SherpaOnnxOfflineRecognizer,
-        samples: [Float]
+        samples: [Float],
+        languageHint: String = "auto"
     ) -> String {
+        let deadline = CFAbsoluteTimeGetCurrent() + 90.0
+
         func runPass(_ input: [Float], chunkSize: Int, overlap: Int) -> String {
             var pieces: [String] = []
             var offset = 0
             while offset < input.count {
+                if CFAbsoluteTimeGetCurrent() >= deadline {
+                    break
+                }
                 let end = min(offset + chunkSize, input.count)
                 let chunk = Array(input[offset..<end])
                 let partial = recognizer.decode(samples: chunk, sampleRate: 16000)
@@ -263,18 +234,31 @@ final class SherpaOnnxOfflineEngine: ASREngine {
         let raw = samples
         let scaled = samples.map { $0 * 32768.0 }
         let chunkShapes: [(Int, Int)] = [
-            (16000 * 4, 16000 / 2)
+            (16000 * 4, 16000 / 2),
+            (16000 * 8, 16000),
+            (16000 * 12, 16000 * 3 / 2)
         ]
         var bestText = ""
         var bestScore = Int.min
 
-        for candidate in [raw, scaled] {
+        for (candidateIndex, candidate) in [raw, scaled].enumerated() {
+            let candidateLabel = candidateIndex == 0 ? "raw" : "scaled"
             for (chunkSize, overlap) in chunkShapes {
+                if CFAbsoluteTimeGetCurrent() >= deadline {
+                    break
+                }
                 let text = runPass(candidate, chunkSize: chunkSize, overlap: overlap)
                 if text.isEmpty {
                     continue
                 }
-                let score = scoreOmnilingualText(text)
+                let score = scoreOmnilingualText(text, languageHint: languageHint)
+                NSLog(
+                    "[SherpaOnnxOfflineEngine] Omnilingual chunk candidate=%@ chunk=%.1fs score=%d text=\"%@\"",
+                    candidateLabel,
+                    Double(chunkSize) / 16000.0,
+                    score,
+                    String(text.prefix(160))
+                )
                 if score > bestScore {
                     bestScore = score
                     bestText = text
@@ -282,27 +266,43 @@ final class SherpaOnnxOfflineEngine: ASREngine {
             }
         }
 
+        if !bestText.isEmpty {
+            NSLog(
+                "[SherpaOnnxOfflineEngine] Omnilingual chunk selected score=%d text=\"%@\"",
+                bestScore,
+                String(bestText.prefix(200))
+            )
+        } else {
+            NSLog("[SherpaOnnxOfflineEngine] Omnilingual chunk fallback produced empty output")
+        }
         return bestText
     }
 
-    private nonisolated static func scoreOmnilingualText(_ text: String) -> Int {
+    private nonisolated static func scoreOmnilingualText(_ text: String, languageHint: String = "auto") -> Int {
         let lower = text.lowercased()
         let keywords = ["country", "ask", "do for", "fellow", "americans"]
+        let normalizedHint = languageHint.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         var score = 0
         for keyword in keywords where lower.contains(keyword) {
             score += 120
         }
-        score += text.unicodeScalars.filter { CharacterSet.letters.contains($0) && $0.isASCII }.count
-        score -= text.unicodeScalars.filter { CharacterSet.letters.contains($0) && !$0.isASCII }.count * 2
+        let asciiLetters = text.unicodeScalars.filter { CharacterSet.letters.contains($0) && $0.isASCII }.count
+        let nonAsciiLetters = text.unicodeScalars.filter { CharacterSet.letters.contains($0) && !$0.isASCII }.count
+        score += asciiLetters
+        score -= (normalizedHint.hasPrefix("en") ? 3 : 2) * nonAsciiLetters
+        score -= text.filter { $0 == "\u{FFFD}" }.count * 8
+        if normalizedHint.hasPrefix("en") && asciiLetters == 0 {
+            score -= 300
+        }
         return score
     }
 
-    /// Create a recognizer with a specific provider. Throws on failure.
-    private nonisolated static func createRecognizerWithProvider(
+    /// Create a recognizer using CPU provider.
+    private nonisolated static func createRecognizer(
         config: SherpaModelConfig,
-        modelDir: String,
-        provider: String
+        modelDir: String
     ) throws -> SherpaOnnxOfflineRecognizer {
+        let provider = "cpu"
         let fm = FileManager.default
         let tokensPath = "\(modelDir)/\(config.tokens)"
 
@@ -311,7 +311,7 @@ final class SherpaOnnxOfflineEngine: ASREngine {
                           userInfo: [NSLocalizedDescriptionKey: "tokens.txt not found at \(tokensPath)"])
         }
 
-        let numThreads = recommendedOfflineThreads()
+        let numThreads = config.modelType == .omnilingualCtc ? 1 : recommendedOfflineThreads()
         var modelConfig: SherpaOnnxOfflineModelConfig
 
         switch config.modelType {
@@ -407,25 +407,6 @@ final class SherpaOnnxOfflineEngine: ASREngine {
         return recognizer
     }
 
-    /// Quick probe: feed a 1s 440Hz sine wave and check if the recognizer returns any text.
-    /// A working recognizer will detect *something*; a broken CoreML backend returns empty.
-    private nonisolated static func probeRecognizer(_ recognizer: SherpaOnnxOfflineRecognizer) -> Bool {
-        let sampleRate = 16000
-        let count = sampleRate  // 1 second
-        // Generate a 440Hz sine tone at moderate volume
-        var probe = [Float](repeating: 0, count: count)
-        for i in 0..<count {
-            probe[i] = 0.3 * sin(2.0 * .pi * 440.0 * Float(i) / Float(sampleRate))
-        }
-        let result = recognizer.decode(samples: probe, sampleRate: sampleRate)
-        let text = result.text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-        let lang = result.lang
-        let hasOutput = !text.isEmpty || !lang.isEmpty
-        NSLog("[SherpaOnnxOfflineEngine] Probe result: text=\"%@\" lang=\"%@\" hasOutput=%d",
-              String(text.prefix(50)), lang, hasOutput ? 1 : 0)
-        return hasOutput
-    }
-
     /// Remove spaces between CJK characters. Keeps spaces around Latin/number runs.
     private nonisolated static func stripCJKSpaces(_ text: String) -> String {
         var result = ""
@@ -459,23 +440,13 @@ final class SherpaOnnxOfflineEngine: ASREngine {
             || (v >= 0x20000 && v <= 0x2FA1F)  // CJK Extension B+
     }
 
-    private nonisolated static func preferredOfflineProviders() -> [String] {
-        // Try CoreML first for Neural Engine acceleration; probe validates it
-        // actually works (fails silently on some chips like A12X). CPU fallback.
-        ["coreml", "cpu"]
-    }
-
     private nonisolated static func recommendedOfflineThreads() -> Int {
         let cores = max(ProcessInfo.processInfo.activeProcessorCount, 1)
         switch cores {
-        case 0 ... 2:
-            return 1
-        case 3 ... 4:
-            return 2
-        case 5 ... 8:
-            return 4
-        default:
-            return 6
+        case 0...2: return 1
+        case 3...4: return 2
+        case 5...8: return 4
+        default:    return 6
         }
     }
 }
