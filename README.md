@@ -1,5 +1,6 @@
 # VoicePing iOS Offline Transcribe
 
+[![iOS Build](https://github.com/voiceping-ai/voiceping-ios-offline-transcribe/actions/workflows/ios-build.yml/badge.svg)](https://github.com/voiceping-ai/voiceping-ios-offline-transcribe/actions/workflows/ios-build.yml)
 [![iOS](https://img.shields.io/badge/iOS-17%2B-black)](#requirements)
 [![Swift](https://img.shields.io/badge/Swift-5.9-orange)](#tech-stack)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](#license)
