@@ -38,6 +38,7 @@ struct TranscriptionView: View {
                                     .font(.body)
                                     .foregroundStyle(.secondary)
                                     .italic()
+                                    .accessibilityIdentifier("hypothesis_text")
                             }
 
                             if confirmedText.isEmpty && hypothesisText.isEmpty
@@ -173,6 +174,7 @@ struct TranscriptionView: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 4)
+                .accessibilityIdentifier("file_transcribing_indicator")
             }
 
             // Controls

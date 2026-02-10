@@ -135,6 +135,7 @@ if [ "$USE_XCUITEST" = true ]; then
     for MODEL_ID in "${MODELS[@]}"; do
         METHOD=${XCUI_METHODS[$MODEL_ID]}
         MODEL_DIR="$EVIDENCE_DIR/$MODEL_ID"
+        rm -rf "$MODEL_DIR"
         mkdir -p "$MODEL_DIR"
 
         echo "--- Testing: $MODEL_ID (XCUITest: $METHOD) ---"
@@ -174,6 +175,16 @@ if [ "$USE_XCUITEST" = true ]; then
         # Collect evidence from /tmp/e2e_evidence/{modelId}/ (written by test)
         if [ -d "/tmp/e2e_evidence/$MODEL_ID" ]; then
             cp -r "/tmp/e2e_evidence/$MODEL_ID/"* "$MODEL_DIR/" 2>/dev/null || true
+        fi
+
+        # On real devices, also pull app-side inference log for this run.
+        if [ "$USE_REAL_DEVICE" = true ]; then
+            xcrun devicectl device copy from \
+                --device "$IOS_DEVICE_ID" \
+                --domain-type appDataContainer \
+                --domain-identifier "$BUNDLE_ID" \
+                --source Documents/inference_log.txt \
+                --destination "$MODEL_DIR/inference_log.txt" >/dev/null 2>&1 || true
         fi
 
         # Also check /tmp result.json

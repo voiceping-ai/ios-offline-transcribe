@@ -15,6 +15,7 @@ final class WhisperKitEngine: ASREngine {
     private(set) var loadingStatusMessage: String = ""
 
     private var whisperKit: WhisperKit?
+    private var currentModelVariant: String?
     private var lastEnergyUpdateTime: CFAbsoluteTime = 0
     private var sessionStartSampleIndex: Int = 0
     private var sessionStartEnergyIndex: Int = 0
@@ -100,6 +101,7 @@ final class WhisperKitEngine: ASREngine {
             )
 
             whisperKit = try await WhisperKit(config)
+            currentModelVariant = variant
             modelState = .loaded
             loadingStatusMessage = ""
             logger.log("[WhisperKitEngine] Model loaded successfully: \(variant)")
@@ -144,9 +146,11 @@ final class WhisperKitEngine: ASREngine {
             )
 
             whisperKit = try await WhisperKit(config)
+            currentModelVariant = variant
             modelState = .loaded
             loadingStatusMessage = ""
         } catch {
+            currentModelVariant = nil
             modelState = .unloaded
             loadingStatusMessage = ""
         }
@@ -164,6 +168,7 @@ final class WhisperKitEngine: ASREngine {
         stopRecording()
         await whisperKit?.unloadModels()
         whisperKit = nil
+        currentModelVariant = nil
         modelState = .unloaded
         downloadProgress = 0.0
         audioSamples = []
@@ -223,16 +228,16 @@ final class WhisperKitEngine: ASREngine {
         guard let whisperKit else { throw AppError.modelNotReady }
         let logger = InferenceLogger.shared
 
-        let workerCount = min(4, ProcessInfo.processInfo.activeProcessorCount)
-        let decodeTemperature = max(options.temperature, 0.2)
+        // Keep worker fan-out conservative on older iPads to avoid decode stalls.
+        let workerCount = min(2, max(1, ProcessInfo.processInfo.activeProcessorCount))
         let decodingOptions = DecodingOptions(
             verbose: false,
             task: .transcribe,
             language: options.language,
-            temperature: decodeTemperature,
-            temperatureFallbackCount: 5,
-            usePrefillPrompt: false,
-            usePrefillCache: false,
+            temperature: options.temperature,
+            temperatureFallbackCount: 3,
+            usePrefillPrompt: true,
+            usePrefillCache: true,
             skipSpecialTokens: true,
             withoutTimestamps: !options.withTimestamps,
             wordTimestamps: options.withTimestamps,
@@ -253,15 +258,24 @@ final class WhisperKitEngine: ASREngine {
 
         let primary = mapResult(result, timeOffset: 0, startingId: 0)
         let isLongAudio = audioArray.count >= 16000 * 18
-        if !primary.text.isEmpty, !isLongAudio {
+        if !isLongAudio {
             return primary
         }
 
-        // For long audio, also run chunked decode and keep the higher-quality text.
+        let primaryScore = transcriptionQualityScore(primary.text)
+        let isWhisperBaseVariant = (currentModelVariant ?? "").contains("whisper-base")
+        // Only pay the chunked cost when primary output is empty or suspicious.
+        let shouldRunChunkedFallback = isWhisperBaseVariant || primary.text.isEmpty || primaryScore < 140
+        if !shouldRunChunkedFallback {
+            return primary
+        }
+
+        // For low-quality long-audio output, run chunked decode and keep the better result.
         let chunked = try await transcribeChunked(
             whisperKit: whisperKit,
             audioArray: audioArray,
-            decodingOptions: decodingOptions
+            decodingOptions: decodingOptions,
+            aggressiveMode: isWhisperBaseVariant
         )
         if primary.text.isEmpty {
             return chunked
@@ -269,9 +283,11 @@ final class WhisperKitEngine: ASREngine {
         if chunked.text.isEmpty {
             return primary
         }
-        let primaryScore = transcriptionQualityScore(primary.text)
         let chunkedScore = transcriptionQualityScore(chunked.text)
         logger.log("[WhisperKitEngine] long-audio quality primaryScore=\(primaryScore) chunkedScore=\(chunkedScore) primary=\"\(String(primary.text.prefix(120)))\" chunked=\"\(String(chunked.text.prefix(120)))\"")
+        if isWhisperBaseVariant {
+            return chunkedScore >= primaryScore ? chunked : primary
+        }
         return chunkedScore > primaryScore ? chunked : primary
     }
 
@@ -302,10 +318,11 @@ final class WhisperKitEngine: ASREngine {
     private func transcribeChunked(
         whisperKit: WhisperKit,
         audioArray: [Float],
-        decodingOptions: DecodingOptions
+        decodingOptions: DecodingOptions,
+        aggressiveMode: Bool = false
     ) async throws -> ASRResult {
-        let chunkSize = 16000 * 12
-        let overlap = 16000 * 2
+        let chunkSize = aggressiveMode ? 16000 * 5 : 16000 * 12
+        let overlap = aggressiveMode ? 16000 / 2 : 16000 * 2
         var offset = 0
         var nextId = 0
         var combinedText: [String] = []

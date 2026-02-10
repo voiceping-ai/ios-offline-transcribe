@@ -1,157 +1,241 @@
-# Offline Transcription (iOS)
+# Offline Transcription for iOS
 
-iOS app for **fully offline speech-to-text transcription** — all inference runs on-device with no cloud dependency.
+[![iOS](https://img.shields.io/badge/iOS-17%2B-black)](#requirements)
+[![Swift](https://img.shields.io/badge/Swift-5.9-orange)](#tech-stack)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue)](#license)
 
-Record speech from the microphone and transcribe it locally using multiple ASR engines (Whisper, Moonshine, SenseVoice, Zipformer, Parakeet). Models are downloaded once from HuggingFace, then everything works completely offline.
+A multi-engine iOS speech-to-text app that runs fully on-device.
+No cloud transcription, no API keys, and no network dependency after model download.
 
-## Features
+This project combines WhisperKit, sherpa-onnx, and FluidAudio into one production-oriented app with model switching, live streaming, telemetry, and E2E coverage.
 
-- Real-time microphone recording with live transcript rendering
-- 4 ASR engine backends with in-app model switching
-- On-device model download with progress tracking
-- Streaming transcription (Zipformer transducer, endpoint-based)
-- Voice Activity Detection (VAD) toggle
-- Optional timestamp display
-- Session audio saving as WAV (PCM 16kHz mono 16-bit)
-- Audio playback with 200-bar waveform scrubber
-- ZIP export of session (transcription + audio)
-- AVAudioSession interruption + route change handling
-- Live audio energy visualization
-- CPU / memory / tokens-per-second telemetry display
-- Storage guard before large model downloads
+## Why This Project
 
-## Supported Models (11)
+- Fully offline transcription pipeline from microphone capture to export
+- Multiple ASR engines in one app with side-by-side practical benchmarks
+- Real-time streaming path (Zipformer) plus high-accuracy offline paths (Whisper, Parakeet)
+- Built-in operational safeguards: VAD gating, storage checks, interruption handling, resource telemetry
+- Designed for real-device validation, not simulator-only demos
+
+## Benchmark Snapshot (Real iPad, 30s Fixture)
+
+Baseline: `artifacts/e2e/ios/final-verify-20260209-151128`
+
+**11/11 tested, 9 PASS, 2 FAIL, 0 TIMEOUT**
+
+| Model | tok/s | Time | Verdict | Notes |
+|---|---:|---:|---|---|
+| Moonshine Tiny | 76.5 | 0.8s | PASS | Fastest overall |
+| Zipformer Streaming | 75.2 | 0.7s | PASS | Best real-time responsiveness |
+| Moonshine Base | 40.6 | 1.4s | PASS | Strong speed/quality balance |
+| SenseVoice Small | 16.2 | 3.6s | PASS | Best multilingual punctuation balance |
+| Whisper Tiny | 10.6 | 5.5s | PASS | Lightweight Whisper option |
+| Parakeet TDT 0.6B | 9.0 | 6.4s | PASS | High-quality punctuation and casing |
+| Whisper Base | 7.9 | 26.3s | FAIL | Quality regression (repetitive/hallucinated text) |
+| Whisper Small | 0.9 | 65.3s | PASS | Best stable Whisper quality |
+| Whisper Large V3 Turbo | 0.24 | 241.8s | PASS | High quality, high latency |
+| Whisper Large V3 Turbo (Compressed) | 0.13 | 428.8s | PASS | Slowest passing model |
+| Omnilingual 300M | 0.0 | 97.6s | FAIL | Empty or non-English output on English fixture |
+
+Token speed is computed from transcript token count over `duration_ms` in E2E output and is intended for relative comparison.
+
+## Recommended Models by Goal
+
+- Lowest latency: `moonshine-tiny`, `zipformer-20m`
+- Fast with better readability: `moonshine-base`, `sensevoice-small`
+- Best Whisper quality that currently passes: `whisper-small`
+- Highest quality punctuation/casing with good stability: `parakeet-tdt-v3`
+
+## Feature Highlights
+
+### Transcription
+
+- Live microphone transcription with rolling hypothesis and confirmed text
+- Streaming and offline decode paths under a unified engine protocol
+- Model download, load, and runtime switching in-app
+
+### Reliability
+
+- VAD and RMS gating to reduce silence hallucinations
+- Audio session interruption and route-change handling
+- Chunked decoding and adaptive scheduling for real-device stability
+
+### UX and Export
+
+- Timestamp support
+- Session audio save (`audio.wav`) plus transcript export (`ZIP`)
+- Waveform playback with seek and progress visualization
+- CPU, memory, and throughput telemetry while recording
+
+## Supported Models
 
 | Model | Engine | Size | Params | Languages |
-|-------|--------|------|--------|-----------|
+|---|---|---:|---:|---|
 | Whisper Tiny | WhisperKit (CoreML) | ~80 MB | 39M | 99 languages |
 | Whisper Base | WhisperKit (CoreML) | ~150 MB | 74M | 99 languages |
 | Whisper Small | WhisperKit (CoreML) | ~500 MB | 244M | 99 languages |
 | Whisper Large V3 Turbo | WhisperKit (CoreML) | ~600 MB | 809M | 99 languages |
 | Whisper Large V3 Turbo (Compressed) | WhisperKit (CoreML) | ~1 GB | 809M | 99 languages |
-| Moonshine Tiny | sherpa-onnx | ~125 MB | 27M | English |
-| Moonshine Base | sherpa-onnx | ~280 MB | 61M | English |
-| SenseVoice Small | sherpa-onnx | ~240 MB | 234M | zh/en/ja/ko/yue |
-| Omnilingual 300M | sherpa-onnx | ~365 MB | 300M | 1,600+ languages |
-| Zipformer Streaming | sherpa-onnx | ~46 MB | 20M | English |
+| Moonshine Tiny | sherpa-onnx offline | ~125 MB | 27M | English |
+| Moonshine Base | sherpa-onnx offline | ~280 MB | 61M | English |
+| SenseVoice Small | sherpa-onnx offline | ~240 MB | 234M | zh/en/ja/ko/yue |
+| Omnilingual 300M | sherpa-onnx offline | ~365 MB | 300M | 1,600+ languages |
+| Zipformer Streaming | sherpa-onnx streaming | ~46 MB | 20M | English |
 | Parakeet TDT 0.6B | FluidAudio (CoreML) | ~600 MB | 600M | 25 European languages |
 
 ## Architecture
 
-```
-┌───────────────────────────────────────────────────────────────┐
-│                   OfflineTranscriptionApp                       │
-│                      (SwiftUI App)                              │
-├───────────────────────────────────────────────────────────────┤
-│                                                                │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────┐ │
-│  │ TranscriptionView│  │ WaveformPlayback │  │ ModelSetupView│ │
-│  │                  │  │ View             │  │              │ │
-│  └────────┬─────────┘  └────────┬─────────┘  └──────┬───────┘ │
-│           │                     │                    │         │
-│  ┌────────▼─────────┐  ┌───────▼──────────┐         │         │
-│  │ Transcription    │  │ AudioPlayer      │         │         │
-│  │ ViewModel        │  │ ViewModel        │         │         │
-│  └────────┬─────────┘  └─────────────────-┘         │         │
-│           │                                          │         │
-├───────────▼──────────────────────────────────────────▼─────────┤
-│                      WhisperService                             │
-│             (Orchestrator — coordinates all services)           │
-│                                                                │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │ ASREngine Protocol                                        │  │
-│  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────────┐  │  │
-│  │  │ WhisperKit   │ │ SherpaOnnx   │ │ SherpaOnnx       │  │  │
-│  │  │ Engine       │ │ OfflineEngine│ │ StreamingEngine  │  │  │
-│  │  │ (CoreML)     │ │ (Moonshine,  │ │ (Zipformer)      │  │  │
-│  │  │              │ │  SenseVoice, │ │                  │  │  │
-│  │  │              │ │  Omnilingual)│ │                  │  │  │
-│  │  └──────────────┘ └──────────────┘ └──────────────────┘  │  │
-│  │  ┌──────────────┐                                         │  │
-│  │  │ FluidAudio   │                                         │  │
-│  │  │ Engine       │                                         │  │
-│  │  │ (Parakeet)   │                                         │  │
-│  │  └──────────────┘                                         │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│                                                                │
-│  ┌────────────────┐  ┌──────────────────┐  ┌───────────────┐  │
-│  │ AudioRecorder  │  │ SessionFile      │  │ SystemMetrics │  │
-│  │ (AVAudioEngine)│  │ Manager          │  │ (CPU/Memory)  │  │
-│  └────────────────┘  └──────────────────┘  └───────────────┘  │
-│                                                                │
-│  ┌────────────────┐  ┌──────────────────┐                      │
-│  │ ModelDownloader│  │ WAVWriter +      │                      │
-│  │ (URLSession)   │  │ ZIPExporter      │                      │
-│  └────────────────┘  └──────────────────┘                      │
-└───────────────────────────────────────────────────────────────┘
-```
+Core runtime:
 
-### ASR Engines
+- `WhisperService`: central orchestrator for model lifecycle, recording, decode loop, and UI-facing state
+- `ASREngine` protocol with four implementations:
+  - `WhisperKitEngine`
+  - `SherpaOnnxOfflineEngine`
+  - `SherpaOnnxStreamingEngine`
+  - `FluidAudioEngine`
+- `AudioRecorder` and utilities for WAV write/export and session persistence
 
-- **WhisperKitEngine** — Runs Whisper models via CoreML on the Apple Neural Engine. Chunked offline transcription with eager text confirmation.
-- **SherpaOnnxOfflineEngine** — Runs Moonshine, SenseVoice, and Omnilingual models via ONNX Runtime. Batch inference on accumulated audio buffers.
-- **SherpaOnnxStreamingEngine** — Runs Zipformer transducer via ONNX Runtime with 100ms polling and endpoint detection.
-- **FluidAudioEngine** — Runs NVIDIA Parakeet-TDT via CoreML using the FluidAudio SDK. Best English WER (2.5%), 25 European languages.
+UI stack:
 
-## Setup
+- SwiftUI views + view models (`TranscriptionView`, `ModelSetupView`, waveform playback)
+- Live metrics and state-driven controls for recording, playback, and export
 
-**Requirements:** macOS, Xcode 15+, iOS 17+ simulator or device, XcodeGen (`brew install xcodegen`)
+## Quick Start
+
+### Requirements
+
+- macOS
+- Xcode 15+
+- iOS 17+ device or simulator
+- `xcodegen` (`brew install xcodegen`)
+
+### Setup
 
 ```bash
 git clone <repo-url>
 cd repo-ios-transcription-only
-
-# Generate Xcode project
 xcodegen generate
 open OfflineTranscription.xcodeproj
 ```
 
-Build from CLI:
+### Build from CLI
+
 ```bash
 xcodebuild -project OfflineTranscription.xcodeproj \
   -scheme OfflineTranscription \
   -destination 'generic/platform=iOS Simulator' build
 ```
 
-## Testing
+### Unit Tests
 
 ```bash
-# Unit tests (~110 tests, 8 suites)
-xcodebuild test -scheme OfflineTranscription \
+xcodebuild test -project OfflineTranscription.xcodeproj \
+  -scheme OfflineTranscription \
   -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
   -only-testing:OfflineTranscriptionTests
 ```
 
+### Real-Device E2E (iPad)
+
+```bash
+IOS_DEVICE_ID=<your-device-udid> scripts/ios-e2e-test.sh
+```
+
+Targeted run example:
+
+```bash
+IOS_DEVICE_ID=<your-device-udid> scripts/ios-e2e-test.sh whisper-small parakeet-tdt-v3
+```
+
+## Flow Validation (Screenshots + Logs)
+
+Use this when you want auditable proof that the full model-load -> inference -> result flow worked.
+
+### 1) Run E2E with an explicit evidence directory
+
+```bash
+IOS_DEVICE_ID=<your-device-udid> \
+EVIDENCE_DIR=artifacts/e2e/ios/verify-$(date +%Y%m%d-%H%M%S) \
+scripts/ios-e2e-test.sh whisper-tiny whisper-small moonshine-base
+```
+
+### 2) Validate screen capture artifacts
+
+Each model folder should contain screenshots such as:
+
+- `01_model_loading.png`
+- `02_model_loaded.png`
+- `03_inference_result.png`
+
+Quick check:
+
+```bash
+find artifacts/e2e/ios/verify-* -maxdepth 2 -name '*.png' | wc -l
+```
+
+### 3) Validate machine-readable result output
+
+```bash
+find artifacts/e2e/ios/verify-* -maxdepth 2 -name result.json -print
+```
+
+Inspect pass/fail + transcript snippet:
+
+```bash
+python3 - <<'PY'
+import json,glob
+for p in sorted(glob.glob("artifacts/e2e/ios/verify-*/**/result.json", recursive=True)):
+    r=json.load(open(p))
+    print(p, "PASS" if r.get("pass") else "FAIL", str(r.get("duration_ms",0))+"ms", (r.get("transcript","")[:80]))
+PY
+```
+
+### 4) Validate logs (test runner + app inference log)
+
+- `xcodebuild.log`: full XCTest and runner output
+- `inference_log.txt`: app-side inference lifecycle log (real-device mode)
+
+Extract key signal lines:
+
+```bash
+rg -n "E2E_RESULT|transcribeTestFile|Result written|ERROR" artifacts/e2e/ios/verify-*/**/xcodebuild.log
+rg -n "setupModel|TRANSCRIBE|long-audio|E2E audio stats|ERROR" artifacts/e2e/ios/verify-*/**/inference_log.txt
+```
+
+### 5) Optional: UI flow validation (interaction-level screenshots)
+
+```bash
+EVIDENCE_DIR=artifacts/ui-flow-tests/ios/verify-$(date +%Y%m%d-%H%M%S) \
+scripts/ios-ui-flow-tests.sh
+```
+
+## Current Known Issues
+
+- `whisper-base` currently fails quality checks on iPad E2E (repetitive/hallucinated output)
+- `omnilingual-300m` currently fails English fixture validation (empty or non-English output)
+
+These are tracked as active inference-quality issues, not app crashes.
+
 ## Tech Stack
 
-- Swift 5.9 + SwiftUI + SwiftData
-- WhisperKit (CoreML inference, pinned revision)
-- sherpa-onnx (local SPM package, ONNX Runtime)
-- FluidAudio (CoreML, Parakeet-TDT)
-- swift-transformers (HuggingFace Hub)
-- iOS 17.0+
-
-## Dependencies
-
-| Package | Purpose |
-|---------|---------|
-| WhisperKit | Whisper CoreML inference |
-| SherpaOnnxKit | sherpa-onnx local SPM package |
-| FluidAudio | Parakeet-TDT CoreML inference |
-| swift-transformers | HuggingFace Hub model downloads |
-| swift-collections | Data structures |
+- Swift 5.9
+- SwiftUI + SwiftData
+- WhisperKit (CoreML)
+- sherpa-onnx (ONNX Runtime, local SPM package)
+- FluidAudio (CoreML, Parakeet)
+- swift-transformers (HuggingFace model fetch)
 
 ## Privacy
 
-- All audio and transcripts are processed and stored locally on device
-- Network access is only required for initial model downloads
-- No cloud transcription or analytics services are used
+- Audio and transcripts are processed on-device
+- Network is used only for model download
+- No cloud transcription or analytics dependency in the ASR path
 
 ## License
 
 Apache License 2.0. See `LICENSE`.
 
-Model weights are downloaded at runtime and have their own licenses — see `NOTICE`.
+Model weights are downloaded at runtime and keep their own licenses. See `NOTICE`.
 
 ## Creator
 

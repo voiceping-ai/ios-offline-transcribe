@@ -38,8 +38,8 @@ struct ModelInfo: Identifiable, Hashable {
             description: "Balanced speed and accuracy. Recommended.",
             family: .whisper,
             engineType: .whisperKit,
-            languages: "99 languages",
-            variant: "openai_whisper-base",
+            languages: "English",
+            variant: "openai_whisper-base.en",
             sherpaModelConfig: nil
         ),
         ModelInfo(

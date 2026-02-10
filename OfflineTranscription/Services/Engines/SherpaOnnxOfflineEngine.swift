@@ -101,6 +101,7 @@ final class SherpaOnnxOfflineEngine: ASREngine {
         let modelType = currentModel?.sherpaModelConfig?.modelType
         let modelName = currentModel?.id ?? "unknown"
         let audioDuration = Float(audioArray.count) / 16000.0
+        let isLongOmnilingual = modelType == .omnilingualCtc && audioArray.count > Int(16000 * 8)
 
         // Log audio stats
         let minSample = audioArray.min() ?? 0
@@ -112,6 +113,36 @@ final class SherpaOnnxOfflineEngine: ASREngine {
         // No int16 scaling — matches Android behavior where SenseVoice works
         // with raw floats and has better accuracy.
         let samples = audioArray
+
+        if isLongOmnilingual {
+            logger.log("  Omnilingual long decode (\(String(format: "%.1f", audioDuration))s) -> chunked path")
+            let chunkStart = CFAbsoluteTimeGetCurrent()
+            let chunkedText = await Task.detached {
+                Self.decodeOmnilingualChunked(
+                    recognizer: recognizer,
+                    samples: samples,
+                    languageHint: options.language ?? "auto"
+                )
+            }.value.trimmingCharacters(in: .whitespacesAndNewlines)
+            let chunkEnd = CFAbsoluteTimeGetCurrent()
+            logger.log("  Omnilingual chunk-first decode took \(String(format: "%.3f", chunkEnd - chunkStart))s result_len=\(chunkedText.count) text=\"\(String(chunkedText.prefix(200)))\"")
+            if !chunkedText.isEmpty {
+                let segId = segmentIdCounter
+                segmentIdCounter += 1
+                let segment = ASRSegment(
+                    id: segId,
+                    text: " " + chunkedText,
+                    start: 0,
+                    end: audioDuration
+                )
+                return ASRResult(
+                    text: chunkedText,
+                    segments: [segment],
+                    language: options.language
+                )
+            }
+            logger.log("  Omnilingual chunk-first path returned empty; falling back to full decode")
+        }
 
         let decodeStart = CFAbsoluteTimeGetCurrent()
         var result = await Task.detached {
@@ -388,6 +419,7 @@ final class SherpaOnnxOfflineEngine: ASREngine {
                 numThreads: numThreads,
                 provider: provider,
                 debug: 0,
+                modelingUnit: "bpe",
                 omnilingual: omniConfig
             )
         }

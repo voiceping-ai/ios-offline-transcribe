@@ -643,11 +643,15 @@ final class WhisperService {
 
         resetTranscriptionState()
         e2eOverlayPayload = ""
+        isTranscribingFile = true
         e2eTranscribeInFlight = true
 
         cancelAndTrackTranscriptionTask()
         transcriptionTask = Task {
-            defer { e2eTranscribeInFlight = false }
+            defer {
+                e2eTranscribeInFlight = false
+                isTranscribingFile = false
+            }
             // Note: do NOT call drainLingeringTranscriptionTask() here — it would
             // see transcriptionTask == self and deadlock awaiting its own result.
             // cancelAndTrackTranscriptionTask() above already cancelled the old task.
@@ -655,7 +659,11 @@ final class WhisperService {
                 NSLog("[E2E] Loading audio file...")
                 let samples = try Self.loadAudioFile(url: URL(fileURLWithPath: path))
                 let audioDuration = Double(samples.count) / Double(Self.sampleRate)
+                let minSample = samples.min() ?? 0
+                let maxSample = samples.max() ?? 0
+                let rms = sqrt(samples.reduce(0) { $0 + $1 * $1 } / max(Float(samples.count), 1))
                 NSLog("[E2E] Audio loaded: \(samples.count) samples (\(audioDuration)s)")
+                logger.log("E2E audio stats model=\(selectedModel.id) min=\(String(format: "%.4f", minSample)) max=\(String(format: "%.4f", maxSample)) rms=\(String(format: "%.5f", rms))")
                 self.bufferSeconds = audioDuration
                 // Keep language auto-detection for E2E to avoid model-specific decode regressions
                 // (e.g., repetition loops or empty output under forced language), except

@@ -86,10 +86,17 @@ final class AllModelsE2ETest: XCTestCase {
         // 4. Wait for E2E overlay or result.json
         let overlay = app.otherElements.matching(identifier: "e2e_overlay").firstMatch
         let confirmedTextElement = app.staticTexts.matching(identifier: "confirmed_text").firstMatch
+        let hypothesisTextElement = app.staticTexts.matching(identifier: "hypothesis_text").firstMatch
+        let fileTranscribingIndicator = app.descendants(matching: .any).matching(
+            identifier: "file_transcribing_indicator"
+        ).firstMatch
         let overlayTimeout: TimeInterval = timeoutSec
+        let fallbackMinWait: TimeInterval = 12
         let startWait = Date()
         var resultExists = false
         var capturedResultJSON: String?
+        var previousFallbackTranscript: String?
+        var fallbackStableCount = 0
 
         while Date().timeIntervalSince(startWait) < overlayTimeout {
             // Check for result.json file (fast path)
@@ -114,17 +121,35 @@ final class AllModelsE2ETest: XCTestCase {
                     NSLog("[E2E] [\(modelId)] E2E overlay detected but payload not ready yet")
                 }
             }
+
             // UI fallback for cases where file/overlay bridge is unavailable on real devices.
-            if confirmedTextElement.exists {
-                let transcript = confirmedTextElement.label.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !transcript.isEmpty {
+            // Avoid capturing early partial/hallucinated text while file transcription is still running.
+            let isStillTranscribing = fileTranscribingIndicator.exists || !testFileButton.exists
+            let waitedLongEnoughForFallback = Date().timeIntervalSince(startWait) >= fallbackMinWait
+            let nearTimeout = Date().timeIntervalSince(startWait) >= (overlayTimeout - 12)
+            if (!isStillTranscribing || nearTimeout), waitedLongEnoughForFallback,
+               let transcript = fallbackTranscript(
+                confirmedTextElement: confirmedTextElement,
+                hypothesisTextElement: hypothesisTextElement
+               ) {
+                if transcript == previousFallbackTranscript {
+                    fallbackStableCount += 1
+                } else {
+                    previousFallbackTranscript = transcript
+                    fallbackStableCount = 1
+                }
+
+                if fallbackStableCount >= 2 {
                     let payload = syntheticResultJSON(modelId: modelId, transcript: transcript)
                     capturedResultJSON = payload
                     try? payload.write(toFile: resultPath, atomically: true, encoding: .utf8)
                     resultExists = true
-                    NSLog("[E2E] [\(modelId)] confirmed_text captured from UI fallback")
+                    NSLog("[E2E] [\(modelId)] transcription text captured from UI fallback")
                     break
                 }
+            } else {
+                previousFallbackTranscript = nil
+                fallbackStableCount = 0
             }
             Thread.sleep(forTimeInterval: 2)
         }
@@ -145,15 +170,15 @@ final class AllModelsE2ETest: XCTestCase {
         }
 
         if !resultExists {
-            if confirmedTextElement.exists {
-                let transcript = confirmedTextElement.label.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !transcript.isEmpty {
-                    let payload = syntheticResultJSON(modelId: modelId, transcript: transcript)
-                    capturedResultJSON = payload
-                    try? payload.write(toFile: resultPath, atomically: true, encoding: .utf8)
-                    resultExists = true
-                    NSLog("[E2E] [\(modelId)] confirmed_text captured from UI fallback (post-wait)")
-                }
+            if let transcript = fallbackTranscript(
+                confirmedTextElement: confirmedTextElement,
+                hypothesisTextElement: hypothesisTextElement
+            ) {
+                let payload = syntheticResultJSON(modelId: modelId, transcript: transcript)
+                capturedResultJSON = payload
+                try? payload.write(toFile: resultPath, atomically: true, encoding: .utf8)
+                resultExists = true
+                NSLog("[E2E] [\(modelId)] transcription text captured from UI fallback (post-wait)")
             }
         }
 
@@ -228,7 +253,7 @@ final class AllModelsE2ETest: XCTestCase {
         let overlayPayloadText = app.staticTexts.matching(identifier: "e2e_overlay_payload").firstMatch
         var candidates: [String] = []
 
-        if let value = overlay.value as? String, !value.isEmpty {
+        if overlay.exists, let value = overlay.value as? String, !value.isEmpty {
             candidates.append(value)
         }
         if overlayPayloadText.exists {
@@ -258,6 +283,21 @@ final class AllModelsE2ETest: XCTestCase {
             return nil
         }
         return String(trimmed[start...end])
+    }
+
+    private func fallbackTranscript(
+        confirmedTextElement: XCUIElement,
+        hypothesisTextElement: XCUIElement
+    ) -> String? {
+        if confirmedTextElement.exists {
+            let confirmed = confirmedTextElement.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !confirmed.isEmpty { return confirmed }
+        }
+        if hypothesisTextElement.exists {
+            let hypothesis = hypothesisTextElement.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !hypothesis.isEmpty { return hypothesis }
+        }
+        return nil
     }
 
     private func syntheticResultJSON(modelId: String, transcript: String) -> String {
