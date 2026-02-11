@@ -196,7 +196,13 @@ final class WhisperKitEngine: ASREngine {
         // For device audio mode, set measurement mode before WhisperKit starts recording
         if captureMode == .deviceAudio {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .measurement, options: [.allowBluetoothHFP])
+            let categoryOptions: AVAudioSession.CategoryOptions
+#if compiler(>=6.2)
+            categoryOptions = [.allowBluetoothHFP]
+#else
+            categoryOptions = [.allowBluetooth]
+#endif
+            try session.setCategory(.playAndRecord, mode: .measurement, options: categoryOptions)
             try session.setActive(true)
         }
 
