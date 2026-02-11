@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import WhisperKit
 
@@ -179,7 +180,7 @@ final class WhisperKitEngine: ASREngine {
 
     // MARK: - Recording
 
-    func startRecording() async throws {
+    func startRecording(captureMode: AudioCaptureMode) async throws {
         guard let whisperKit else { throw AppError.modelNotReady }
 
         // Explicitly reset cached samples so a restarted session never reuses
@@ -191,6 +192,13 @@ final class WhisperKitEngine: ASREngine {
 
         let granted = await AudioProcessor.requestRecordPermission()
         guard granted else { throw AppError.microphonePermissionDenied }
+
+        // For device audio mode, set measurement mode before WhisperKit starts recording
+        if captureMode == .deviceAudio {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .measurement, options: [.allowBluetoothHFP])
+            try session.setActive(true)
+        }
 
         try whisperKit.audioProcessor.startRecordingLive(inputDeviceID: nil) { [weak self] _ in
             Task { @MainActor in

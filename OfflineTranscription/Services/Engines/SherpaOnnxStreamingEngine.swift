@@ -96,8 +96,8 @@ final class SherpaOnnxStreamingEngine: ASREngine {
         latestText = ""
     }
 
-    func startRecording() async throws {
-        try await recorder.startRecording()
+    func startRecording(captureMode: AudioCaptureMode) async throws {
+        try await recorder.startRecording(captureMode: captureMode)
         latestText = ""
         recognizer?.reset(hotwords: "")
 

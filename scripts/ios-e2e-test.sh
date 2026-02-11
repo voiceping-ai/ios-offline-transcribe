@@ -35,6 +35,7 @@ ALL_MODELS=(
     "zipformer-20m"
     "omnilingual-300m"
     "parakeet-tdt-v3"
+    "apple-speech"
 )
 
 # Parse arguments
@@ -127,6 +128,7 @@ if [ "$USE_XCUITEST" = true ]; then
         zipformer-20m test_zipformer20m
         omnilingual-300m test_omnilingual300m
         parakeet-tdt-v3 test_parakeetTdtV3
+        apple-speech test_appleSpeech
     )
 
     PASS_COUNT=0

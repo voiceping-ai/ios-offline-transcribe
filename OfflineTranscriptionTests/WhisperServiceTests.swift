@@ -48,7 +48,7 @@ final class WhisperServiceTests: XCTestCase {
     // MARK: - Iteration 3
     func testModelInfoCatalog() {
         let models = ModelInfo.availableModels
-        XCTAssertEqual(models.count, 11)
+        XCTAssertEqual(models.count, 12)
         XCTAssertEqual(models[0].id, "whisper-tiny")
         XCTAssertEqual(models[1].id, "whisper-base")
         XCTAssertEqual(models[2].id, "whisper-small")
@@ -60,6 +60,7 @@ final class WhisperServiceTests: XCTestCase {
         XCTAssertEqual(models[8].id, "zipformer-20m")
         XCTAssertEqual(models[9].id, "omnilingual-300m")
         XCTAssertEqual(models[10].id, "parakeet-tdt-v3")
+        XCTAssertEqual(models[11].id, "apple-speech")
         XCTAssertEqual(ModelInfo.defaultModel.id, "whisper-base")
     }
 
@@ -180,12 +181,13 @@ final class WhisperServiceTests: XCTestCase {
 
     func testModelsByFamily() {
         let groups = ModelInfo.modelsByFamily
-        XCTAssertEqual(groups.count, 6)
+        XCTAssertEqual(groups.count, 7)
         XCTAssertEqual(groups[0].family, .whisper)
         XCTAssertEqual(groups[1].family, .moonshine)
         XCTAssertEqual(groups[2].family, .senseVoice)
         XCTAssertEqual(groups[3].family, .zipformer)
         XCTAssertEqual(groups[4].family, .omnilingual)
         XCTAssertEqual(groups[5].family, .parakeet)
+        XCTAssertEqual(groups[6].family, .appleSpeech)
     }
 }

@@ -1,6 +1,10 @@
+<p align="center">
+  <img src="OfflineTranscription/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png" width="120" alt="App Icon"/>
+</p>
+
 # VoicePing iOS Offline Transcribe
 
-[![iOS Build](https://github.com/voiceping-ai/voiceping-ios-offline-transcribe/actions/workflows/ios-build.yml/badge.svg)](https://github.com/voiceping-ai/voiceping-ios-offline-transcribe/actions/workflows/ios-build.yml)
+[![iOS Build](https://github.com/voiceping-ai/ios-offline-transcribe/actions/workflows/ios-build.yml/badge.svg)](https://github.com/voiceping-ai/ios-offline-transcribe/actions/workflows/ios-build.yml)
 [![iOS](https://img.shields.io/badge/iOS-17%2B-black)](#requirements)
 [![Swift](https://img.shields.io/badge/Swift-5.9-orange)](#tech-stack)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](#license)
@@ -8,7 +12,11 @@
 A multi-engine iOS speech-to-text app that runs fully on-device.
 No cloud transcription, no API keys, and no network dependency after model download.
 
-This project combines WhisperKit, sherpa-onnx, and FluidAudio into one production-oriented app with model switching, live streaming, telemetry, and E2E coverage.
+Combines WhisperKit, sherpa-onnx, and FluidAudio into one production-oriented app with model switching, live streaming, telemetry, and E2E coverage.
+
+> **Related repos:**
+> [Android Transcription](https://github.com/voiceping-ai/android-offline-transcribe) ·
+> [iOS + Android Translation](https://github.com/voiceping-ai/ios-android-offline-speech-translation)
 
 ## Why This Project
 
@@ -40,33 +48,12 @@ Baseline: `artifacts/e2e/ios/final-verify-20260209-151128`
 
 Token speed is computed from transcript token count over `duration_ms` in E2E output and is intended for relative comparison.
 
-## Recommended Models by Goal
+### Recommended Models by Goal
 
-- Lowest latency: `moonshine-tiny`, `zipformer-20m`
-- Fast with better readability: `moonshine-base`, `sensevoice-small`
-- Best Whisper quality that currently passes: `whisper-small`
-- Highest quality punctuation/casing with good stability: `parakeet-tdt-v3`
-
-## Feature Highlights
-
-### Transcription
-
-- Live microphone transcription with rolling hypothesis and confirmed text
-- Streaming and offline decode paths under a unified engine protocol
-- Model download, load, and runtime switching in-app
-
-### Reliability
-
-- VAD and RMS gating to reduce silence hallucinations
-- Audio session interruption and route-change handling
-- Chunked decoding and adaptive scheduling for real-device stability
-
-### UX and Export
-
-- Timestamp support
-- Session audio save (`audio.wav`) plus transcript export (`ZIP`)
-- Waveform playback with seek and progress visualization
-- CPU, memory, and throughput telemetry while recording
+- **Lowest latency:** `moonshine-tiny`, `zipformer-20m`
+- **Fast with better readability:** `moonshine-base`, `sensevoice-small`
+- **Best Whisper quality:** `whisper-small`
+- **Highest quality punctuation/casing:** `parakeet-tdt-v3`
 
 ## Supported Models
 
@@ -84,22 +71,41 @@ Token speed is computed from transcript token count over `duration_ms` in E2E ou
 | Zipformer Streaming | sherpa-onnx streaming | ~46 MB | 20M | English |
 | Parakeet TDT 0.6B | FluidAudio (CoreML) | ~600 MB | 600M | 25 European languages |
 
+## Features
+
+### Transcription
+- Live microphone transcription with rolling hypothesis and confirmed text
+- Streaming and offline decode paths under a unified engine protocol
+- Model download, load, and runtime switching in-app
+
+### Reliability
+- VAD and RMS gating to reduce silence hallucinations
+- Audio session interruption and route-change handling
+- Chunked decoding and adaptive scheduling for real-device stability
+
+### UX and Export
+- Timestamp support
+- Session audio save (`audio.wav`) plus transcript export (`ZIP`)
+- Waveform playback with seek and progress visualization
+- CPU, memory, and throughput telemetry while recording
+
 ## Architecture
 
-Core runtime:
+```
+WhisperService (orchestrator)
+ ├── ASREngine protocol
+ │    ├── WhisperKitEngine
+ │    ├── SherpaOnnxOfflineEngine
+ │    ├── SherpaOnnxStreamingEngine
+ │    └── FluidAudioEngine
+ ├── AudioRecorder (AVAudioEngine)
+ ├── SessionFileManager + WAVWriter + ZIPExporter
+ └── SystemMetrics (CPU/memory telemetry)
 
-- `WhisperService`: central orchestrator for model lifecycle, recording, decode loop, and UI-facing state
-- `ASREngine` protocol with four implementations:
-  - `WhisperKitEngine`
-  - `SherpaOnnxOfflineEngine`
-  - `SherpaOnnxStreamingEngine`
-  - `FluidAudioEngine`
-- `AudioRecorder` and utilities for WAV write/export and session persistence
-
-UI stack:
-
-- SwiftUI views + view models (`TranscriptionView`, `ModelSetupView`, waveform playback)
-- Live metrics and state-driven controls for recording, playback, and export
+UI: SwiftUI views + view models
+    TranscriptionView, ModelSetupView, WaveformPlaybackView
+Persistence: SwiftData (TranscriptionRecord)
+```
 
 ## Quick Start
 
@@ -114,7 +120,7 @@ UI stack:
 
 ```bash
 git clone <repo-url>
-cd voiceping-ios-offline-transcribe
+cd ios-offline-transcribe
 ./scripts/generate-ios-project.sh
 open VoicePingIOSOfflineTranscribe.xcodeproj
 ```
@@ -123,54 +129,38 @@ For physical iPhone/iPad builds, add local signing overrides (kept out of git):
 
 ```bash
 cp project.local.yml.example project.local.yml
-# Edit project.local.yml with your own:
-# - DEVELOPMENT_TEAM (10-char Apple Team ID)
-# - PRODUCT_BUNDLE_IDENTIFIER values (must be unique to your account)
+# Edit with your DEVELOPMENT_TEAM and PRODUCT_BUNDLE_IDENTIFIER
 ./scripts/generate-ios-project.sh
 ```
 
-### Build from CLI
+### Build
 
 ```bash
+# Simulator
 xcodebuild -project VoicePingIOSOfflineTranscribe.xcodeproj \
   -scheme OfflineTranscription \
   -destination 'generic/platform=iOS Simulator' build
-```
 
-```bash
-# Physical device build (requires project.local.yml and regenerated project)
+# Physical device (requires project.local.yml)
 xcodebuild -project VoicePingIOSOfflineTranscribe.xcodeproj \
   -scheme OfflineTranscription \
   -destination 'platform=iOS,id=<device-udid>' \
   -allowProvisioningUpdates build
 ```
 
-### Unit Tests
+### Tests
 
 ```bash
+# Unit tests
 xcodebuild test -project VoicePingIOSOfflineTranscribe.xcodeproj \
   -scheme OfflineTranscription \
   -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
   -only-testing:OfflineTranscriptionTests
 ```
 
-### Real-Device E2E (iPad)
+## E2E Validation
 
-```bash
-IOS_DEVICE_ID=<your-device-udid> scripts/ios-e2e-test.sh
-```
-
-Targeted run example:
-
-```bash
-IOS_DEVICE_ID=<your-device-udid> scripts/ios-e2e-test.sh whisper-small parakeet-tdt-v3
-```
-
-## Flow Validation (Screenshots + Logs)
-
-Use this when you want auditable proof that the full model-load -> inference -> result flow worked.
-
-### 1) Run E2E with an explicit evidence directory
+### Run E2E with evidence output
 
 ```bash
 IOS_DEVICE_ID=<your-device-udid> \
@@ -178,29 +168,15 @@ EVIDENCE_DIR=artifacts/e2e/ios/verify-$(date +%Y%m%d-%H%M%S) \
 scripts/ios-e2e-test.sh whisper-tiny whisper-small moonshine-base
 ```
 
-### 2) Validate screen capture artifacts
+### Validate artifacts
 
-Each model folder should contain screenshots such as:
-
-- `01_model_loading.png`
-- `02_model_loaded.png`
-- `03_inference_result.png`
-
-Quick check:
+Each model folder contains `01_model_loading.png`, `02_model_loaded.png`, `03_inference_result.png`, and `result.json`.
 
 ```bash
+# Count screenshots
 find artifacts/e2e/ios/verify-* -maxdepth 2 -name '*.png' | wc -l
-```
 
-### 3) Validate machine-readable result output
-
-```bash
-find artifacts/e2e/ios/verify-* -maxdepth 2 -name result.json -print
-```
-
-Inspect pass/fail + transcript snippet:
-
-```bash
+# Inspect results
 python3 - <<'PY'
 import json,glob
 for p in sorted(glob.glob("artifacts/e2e/ios/verify-*/**/result.json", recursive=True)):
@@ -209,36 +185,23 @@ for p in sorted(glob.glob("artifacts/e2e/ios/verify-*/**/result.json", recursive
 PY
 ```
 
-### 4) Validate logs (test runner + app inference log)
-
-- `xcodebuild.log`: full XCTest and runner output
-- `inference_log.txt`: app-side inference lifecycle log (real-device mode)
-
-Extract key signal lines:
-
-```bash
-rg -n "E2E_RESULT|transcribeTestFile|Result written|ERROR" artifacts/e2e/ios/verify-*/**/xcodebuild.log
-rg -n "setupModel|TRANSCRIBE|long-audio|E2E audio stats|ERROR" artifacts/e2e/ios/verify-*/**/inference_log.txt
-```
-
-### 5) Optional: UI flow validation (interaction-level screenshots)
+### UI flow validation
 
 ```bash
 EVIDENCE_DIR=artifacts/ui-flow-tests/ios/verify-$(date +%Y%m%d-%H%M%S) \
 scripts/ios-ui-flow-tests.sh
 ```
 
-## Current Known Issues
+## Known Issues
 
-- `whisper-base` currently fails quality checks on iPad E2E (repetitive/hallucinated output)
-- `omnilingual-300m` currently fails English fixture validation (empty or non-English output)
+- `whisper-base`: quality regression on iPad E2E (repetitive/hallucinated output)
+- `omnilingual-300m`: fails English fixture validation (empty or non-English output)
 
-These are tracked as active inference-quality issues, not app crashes.
+These are inference-quality issues, not app crashes.
 
 ## Tech Stack
 
-- Swift 5.9
-- SwiftUI + SwiftData
+- Swift 5.9, SwiftUI, SwiftData
 - WhisperKit (CoreML)
 - sherpa-onnx (ONNX Runtime, local SPM package)
 - FluidAudio (CoreML, Parakeet)
@@ -259,4 +222,3 @@ Model weights are downloaded at runtime and keep their own licenses. See `NOTICE
 ## Creator
 
 Created by **Akinori Nakajima** ([atyenoria](https://github.com/atyenoria)).
-# voiceping-ios-offline-transcribe

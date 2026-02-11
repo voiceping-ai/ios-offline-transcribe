@@ -102,8 +102,8 @@ final class FluidAudioEngine: ASREngine {
         modelState = .unloaded
     }
 
-    func startRecording() async throws {
-        try await recorder.startRecording()
+    func startRecording(captureMode: AudioCaptureMode) async throws {
+        try await recorder.startRecording(captureMode: captureMode)
     }
 
     func stopRecording() {
