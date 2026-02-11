@@ -22,6 +22,8 @@ xcuserdata/
 
 # Xcode auto-generated but regeneratable via xcodegen
 VoicePingIOSOfflineTranscribe.xcodeproj/project.pbxproj
+VoicePingIOSOfflineTranscribe.xcodeproj/xcshareddata/
+project.local.yml
 
 # Swift Package Manager
 .swiftpm/xcode/xcuserdata/

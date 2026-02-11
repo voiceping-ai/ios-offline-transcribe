@@ -1,0 +1,21 @@
+include:
+  - project.yml
+
+targets:
+  OfflineTranscription:
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.voiceping.transcribe
+        DEVELOPMENT_TEAM: ABCDE12345
+
+  OfflineTranscriptionTests:
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.voiceping.transcribe-tests
+        DEVELOPMENT_TEAM: ABCDE12345
+
+  OfflineTranscriptionUITests:
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.voiceping.transcribe-uitests
+        DEVELOPMENT_TEAM: ABCDE12345

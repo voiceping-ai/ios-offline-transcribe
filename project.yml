@@ -47,7 +47,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.voiceping.transcribe
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: YOUR_TEAM_ID
         GENERATE_INFOPLIST_FILE: "YES"
         CURRENT_PROJECT_VERSION: "1"
         MARKETING_VERSION: "1.0.0"
@@ -79,7 +78,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.voiceping.transcribe-tests
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: YOUR_TEAM_ID
         GENERATE_INFOPLIST_FILE: "YES"
     dependencies:
       - target: OfflineTranscription
@@ -95,7 +93,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.voiceping.transcribe-uitests
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: YOUR_TEAM_ID
         GENERATE_INFOPLIST_FILE: "YES"
     dependencies:
       - target: OfflineTranscription

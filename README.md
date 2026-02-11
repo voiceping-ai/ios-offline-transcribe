@@ -115,8 +115,18 @@ UI stack:
 ```bash
 git clone <repo-url>
 cd voiceping-ios-offline-transcribe
-xcodegen generate
+./scripts/generate-ios-project.sh
 open VoicePingIOSOfflineTranscribe.xcodeproj
+```
+
+For physical iPhone/iPad builds, add local signing overrides (kept out of git):
+
+```bash
+cp project.local.yml.example project.local.yml
+# Edit project.local.yml with your own:
+# - DEVELOPMENT_TEAM (10-char Apple Team ID)
+# - PRODUCT_BUNDLE_IDENTIFIER values (must be unique to your account)
+./scripts/generate-ios-project.sh
 ```
 
 ### Build from CLI
@@ -125,6 +135,14 @@ open VoicePingIOSOfflineTranscribe.xcodeproj
 xcodebuild -project VoicePingIOSOfflineTranscribe.xcodeproj \
   -scheme OfflineTranscription \
   -destination 'generic/platform=iOS Simulator' build
+```
+
+```bash
+# Physical device build (requires project.local.yml and regenerated project)
+xcodebuild -project VoicePingIOSOfflineTranscribe.xcodeproj \
+  -scheme OfflineTranscription \
+  -destination 'platform=iOS,id=<device-udid>' \
+  -allowProvisioningUpdates build
 ```
 
 ### Unit Tests
