@@ -149,6 +149,15 @@ final class WhisperService {
     private static let sampleRate: Float = 16000
     private static let displayEnergyFrameLimit = 160
     private static let uiMeterUpdateInterval: CFTimeInterval = 0.12
+    private static let e2eTimestampFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private static let inlineWhitespaceRegex: NSRegularExpression = {
+        // Collapse horizontal whitespace while preserving line breaks.
+        return try! NSRegularExpression(pattern: "[^\\S\\n]+")
+    }()
     /// Maximum audio chunk duration (seconds). Each chunk is transcribed independently;
     /// when the buffer exceeds this, the current hypothesis is confirmed and a new chunk begins.
     /// WhisperKit: 15s (multi-segment, eager mode confirms progressively).
@@ -608,18 +617,8 @@ final class WhisperService {
                 let elapsedMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
                 guard !Task.isCancelled else { return }
                 let words = max(0, result.text.split(whereSeparator: \.isWhitespace).count)
-                let elapsedSeconds = elapsedMs / 1000.0
-                if elapsedSeconds > 0, words > 0 {
-                    tokensPerSecond = Double(words) / elapsedSeconds
-                } else {
-                    tokensPerSecond = 0
-                }
-                confirmedSegments = result.segments
-                let segmentText = result.segments.map(\.text).joined(separator: " ")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                confirmedText = segmentText.isEmpty
-                    ? result.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    : segmentText
+                updateTokensPerSecond(wordCount: words, elapsedMs: elapsedMs)
+                applyFileTranscriptionResult(result)
             } catch {
                 guard !Task.isCancelled else { return }
                 lastError = .transcriptionFailed(underlying: error)
@@ -689,19 +688,9 @@ final class WhisperService {
                 let elapsedMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
                 guard !Task.isCancelled else { return }
                 let words = max(0, result.text.split(whereSeparator: \.isWhitespace).count)
-                let elapsedSeconds = elapsedMs / 1000.0
-                if elapsedSeconds > 0, words > 0 {
-                    tokensPerSecond = Double(words) / elapsedSeconds
-                } else {
-                    tokensPerSecond = 0
-                }
+                updateTokensPerSecond(wordCount: words, elapsedMs: elapsedMs)
                 NSLog("[E2E] Transcription complete: text='\(result.text)', segments=\(result.segments.count)")
-                confirmedSegments = result.segments
-                let segmentText = result.segments.map(\.text).joined(separator: " ")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                confirmedText = segmentText.isEmpty
-                    ? result.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    : segmentText
+                applyFileTranscriptionResult(result)
                 NSLog("[E2E] confirmedText set to: '\(confirmedText)'")
                 scheduleTranslationUpdate()
                 let deadline = Date().addingTimeInterval(10)
@@ -789,7 +778,7 @@ final class WhisperService {
             "pass": pass,
             "tokens_per_second": tokensPerSecond,
             "duration_ms": durationMs,
-            "timestamp": ISO8601DateFormatter().string(from: Date()),
+            "timestamp": Self.e2eTimestampFormatter.string(from: Date()),
             "error": error
         ]
 
@@ -1231,8 +1220,8 @@ final class WhisperService {
     }
 
     private func normalizedJoinedText(from segments: [ASRSegment]) -> String {
-        segments
-            .map { normalizedSegmentText($0.text) }
+        segments.lazy
+            .map { self.normalizedSegmentText($0.text) }
             .filter { !$0.isEmpty }
             .joined(separator: " ")
     }
@@ -1246,7 +1235,7 @@ final class WhisperService {
         text
             .components(separatedBy: "\n")
             .map { line in
-                line.replacingOccurrences(of: "[^\\S\\n]+", with: " ", options: .regularExpression)
+                collapseInlineWhitespace(in: line)
                     .trimmingCharacters(in: .whitespaces)
             }
             .joined(separator: "\n")
@@ -1290,17 +1279,21 @@ final class WhisperService {
         // Keep translation flows testable by using source text fallback inline.
         let simulatorConfirmed = normalizeDisplayText(confirmedSnapshot)
         let simulatorHypothesis = normalizeDisplayText(hypothesisSnapshot)
-        translatedConfirmedText = simulatorConfirmed
-        translatedHypothesisText = simulatorHypothesis
-        translationWarning = sourceCode.caseInsensitiveCompare(targetCode) == .orderedSame
-            ? nil
-            : "On-device Translation API is unavailable on iOS Simulator. Using source text fallback."
+        applyTranslationFallback(
+            confirmed: simulatorConfirmed,
+            hypothesis: simulatorHypothesis,
+            warning: sourceCode.caseInsensitiveCompare(targetCode) == .orderedSame
+                ? nil
+                : "On-device Translation API is unavailable on iOS Simulator. Using source text fallback."
+        )
         lastTranslationInput = (confirmedSnapshot, hypothesisSnapshot)
         #else
         if sourceCode.caseInsensitiveCompare(targetCode) == .orderedSame {
-            translatedConfirmedText = normalizeDisplayText(confirmedSnapshot)
-            translatedHypothesisText = normalizeDisplayText(hypothesisSnapshot)
-            translationWarning = nil
+            applyTranslationFallback(
+                confirmed: normalizeDisplayText(confirmedSnapshot),
+                hypothesis: normalizeDisplayText(hypothesisSnapshot),
+                warning: nil
+            )
             lastTranslationInput = (confirmedSnapshot, hypothesisSnapshot)
             return
         }
@@ -1332,22 +1325,60 @@ final class WhisperService {
                 self.translatedHypothesisText = translatedHypothesis
             } catch let appError as AppError {
                 guard !Task.isCancelled else { return }
-                // Fallback when native translation is unavailable:
-                // keep UI functional by reusing source text and surfacing warning inline.
-                self.translatedConfirmedText = self.normalizeDisplayText(confirmedSnapshot)
-                self.translatedHypothesisText = self.normalizeDisplayText(hypothesisSnapshot)
                 warningMessage = appError.localizedDescription
+                self.applyTranslationFallback(
+                    confirmed: self.normalizeDisplayText(confirmedSnapshot),
+                    hypothesis: self.normalizeDisplayText(hypothesisSnapshot),
+                    warning: warningMessage
+                )
             } catch {
                 guard !Task.isCancelled else { return }
-                self.translatedConfirmedText = self.normalizeDisplayText(confirmedSnapshot)
-                self.translatedHypothesisText = self.normalizeDisplayText(hypothesisSnapshot)
                 warningMessage = AppError.translationFailed(underlying: error).localizedDescription
+                self.applyTranslationFallback(
+                    confirmed: self.normalizeDisplayText(confirmedSnapshot),
+                    hypothesis: self.normalizeDisplayText(hypothesisSnapshot),
+                    warning: warningMessage
+                )
             }
 
             self.translationWarning = warningMessage
             self.lastTranslationInput = (confirmedSnapshot, hypothesisSnapshot)
         }
         #endif
+    }
+
+    private func collapseInlineWhitespace(in line: String) -> String {
+        let range = NSRange(line.startIndex..<line.endIndex, in: line)
+        return Self.inlineWhitespaceRegex.stringByReplacingMatches(
+            in: line,
+            options: [],
+            range: range,
+            withTemplate: " "
+        )
+    }
+
+    private func updateTokensPerSecond(wordCount: Int, elapsedMs: Double) {
+        let elapsedSeconds = elapsedMs / 1000.0
+        if elapsedSeconds > 0, wordCount > 0 {
+            tokensPerSecond = Double(wordCount) / elapsedSeconds
+        } else {
+            tokensPerSecond = 0
+        }
+    }
+
+    private func applyFileTranscriptionResult(_ result: ASRResult) {
+        confirmedSegments = result.segments
+        let segmentText = result.segments.map(\.text).joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        confirmedText = segmentText.isEmpty
+            ? result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            : segmentText
+    }
+
+    private func applyTranslationFallback(confirmed: String, hypothesis: String, warning: String?) {
+        translatedConfirmedText = confirmed
+        translatedHypothesisText = hypothesis
+        translationWarning = warning
     }
 
     private func resetTranscriptionState() {

@@ -211,6 +211,28 @@ struct ModelInfo: Identifiable, Hashable {
     ]
 
     static let defaultModel = availableModels.first { $0.id == "whisper-base" }!
+    private static let familyDisplayOrder: [ModelFamily] = [
+        .whisper,
+        .moonshine,
+        .senseVoice,
+        .zipformer,
+        .omnilingual,
+        .parakeet,
+        .appleSpeech
+    ]
+    private static let cachedSupportedModels: [ModelInfo] = {
+        if FluidAudioEngine.isDeviceSupported {
+            return availableModels
+        }
+        return availableModels.filter { $0.engineType != .fluidAudio }
+    }()
+    private static let cachedModelsByFamily: [(family: ModelFamily, models: [ModelInfo])] = {
+        let grouped = Dictionary(grouping: cachedSupportedModels, by: \.family)
+        return familyDisplayOrder.compactMap { family in
+            guard let models = grouped[family], !models.isEmpty else { return nil }
+            return (family: family, models: models)
+        }
+    }()
 
     var inferenceMethodLabel: String {
         switch engineType {
@@ -237,20 +259,12 @@ struct ModelInfo: Identifiable, Hashable {
 
     /// Models filtered by device capability.
     static var supportedModels: [ModelInfo] {
-        if FluidAudioEngine.isDeviceSupported {
-            return availableModels
-        }
-        return availableModels.filter { $0.engineType != .fluidAudio }
+        cachedSupportedModels
     }
 
     /// Models grouped by family for UI display.
     static var modelsByFamily: [(family: ModelFamily, models: [ModelInfo])] {
-        let grouped = Dictionary(grouping: supportedModels, by: \.family)
-        let order: [ModelFamily] = [.whisper, .moonshine, .senseVoice, .zipformer, .omnilingual, .parakeet, .appleSpeech]
-        return order.compactMap { family in
-            guard let models = grouped[family], !models.isEmpty else { return nil }
-            return (family: family, models: models)
-        }
+        cachedModelsByFamily
     }
 }
 

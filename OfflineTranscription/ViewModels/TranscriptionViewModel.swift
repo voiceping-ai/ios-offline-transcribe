@@ -33,6 +33,18 @@ final class TranscriptionViewModel {
         self.whisperService = whisperService
     }
 
+    private func presentError(_ error: Error) {
+        showError = true
+        if let appError = error as? AppError {
+            if case .microphonePermissionDenied = appError {
+                showPermissionDenied = true
+            }
+            errorMessage = appError.localizedDescription
+            return
+        }
+        errorMessage = error.localizedDescription
+    }
+
     func toggleRecording() async {
         if isRecording || isInterrupted {
             stopRecording()
@@ -45,15 +57,8 @@ final class TranscriptionViewModel {
         do {
             showPermissionDenied = false
             try await whisperService.startRecording()
-        } catch let error as AppError {
-            if case .microphonePermissionDenied = error {
-                showPermissionDenied = true
-            }
-            showError = true
-            errorMessage = error.localizedDescription
         } catch {
-            showError = true
-            errorMessage = error.localizedDescription
+            presentError(error)
         }
     }
 
