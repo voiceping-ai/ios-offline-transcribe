@@ -179,7 +179,12 @@ final class SherpaOnnxOfflineEngine: ASREngine {
         }
 
         // SenseVoice provides language detection
-        let detectedLang: String? = result.lang.isEmpty ? nil : result.lang
+        let detectedLang: String? = {
+            let raw = result.lang.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !raw.isEmpty else { return nil }
+            return raw.replacingOccurrences(of: "<|", with: "")
+                .replacingOccurrences(of: "|>", with: "")
+        }()
 
         // Strip spurious spaces from CJK output. SenseVoice's BPE decoder
         // sometimes inserts word-boundary spaces that are wrong for ja/zh/ko.

@@ -88,10 +88,16 @@ final class WhisperService {
         }
     }
     var translationSourceLanguageCode: String = "en" {
-        didSet { scheduleTranslationUpdate() }
+        didSet {
+            lastTranslationInput = nil
+            scheduleTranslationUpdate()
+        }
     }
     var translationTargetLanguageCode: String = "ja" {
-        didSet { scheduleTranslationUpdate() }
+        didSet {
+            lastTranslationInput = nil
+            scheduleTranslationUpdate()
+        }
     }
 
     // Engine delegation
@@ -470,6 +476,9 @@ final class WhisperService {
         case .fluidAudio:
             // FluidAudio manages its own model cache
             return false
+        case .appleSpeech:
+            // Apple Speech is built into iOS — always available
+            return true
         }
     }
 

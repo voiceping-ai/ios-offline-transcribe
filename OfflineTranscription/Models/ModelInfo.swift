@@ -194,6 +194,20 @@ struct ModelInfo: Identifiable, Hashable {
             variant: nil,
             sherpaModelConfig: nil
         ),
+
+        // MARK: - Apple Speech (built-in)
+        ModelInfo(
+            id: "apple-speech",
+            displayName: "Apple Speech",
+            parameterCount: "System",
+            sizeOnDisk: "Built-in",
+            description: "Apple's native on-device speech recognition. 50+ languages, no download required.",
+            family: .appleSpeech,
+            engineType: .appleSpeech,
+            languages: "50+ languages",
+            variant: nil,
+            sherpaModelConfig: nil
+        ),
     ]
 
     static let defaultModel = availableModels.first { $0.id == "whisper-base" }!
@@ -208,6 +222,8 @@ struct ModelInfo: Identifiable, Hashable {
             return "sherpa-onnx streaming (ONNX Runtime)"
         case .fluidAudio:
             return "CoreML (FluidAudio)"
+        case .appleSpeech:
+            return "Apple Speech (SFSpeechRecognizer)"
         }
     }
 
@@ -230,7 +246,7 @@ struct ModelInfo: Identifiable, Hashable {
     /// Models grouped by family for UI display.
     static var modelsByFamily: [(family: ModelFamily, models: [ModelInfo])] {
         let grouped = Dictionary(grouping: supportedModels, by: \.family)
-        let order: [ModelFamily] = [.whisper, .moonshine, .senseVoice, .zipformer, .omnilingual, .parakeet]
+        let order: [ModelFamily] = [.whisper, .moonshine, .senseVoice, .zipformer, .omnilingual, .parakeet, .appleSpeech]
         return order.compactMap { family in
             guard let models = grouped[family], !models.isEmpty else { return nil }
             return (family: family, models: models)

@@ -13,6 +13,8 @@ enum EngineFactory {
             return SherpaOnnxStreamingEngine()
         case .fluidAudio:
             return FluidAudioEngine()
+        case .appleSpeech:
+            return AppleSpeechEngine()
         }
     }
 }
