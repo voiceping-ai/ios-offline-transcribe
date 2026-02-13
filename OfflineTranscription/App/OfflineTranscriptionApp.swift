@@ -48,6 +48,8 @@ struct RootView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    Spacer()
+                    AppVersionLabel()
                 }
             default:
                 // Only keep TranscriptionRootView if a model was previously loaded

@@ -107,6 +107,9 @@ final class WhisperService {
     /// System audio source for broadcast mode (receives audio from Broadcast Extension).
     private var systemAudioSource: SystemAudioSource?
 
+    /// Whether a ReplayKit broadcast is currently active.
+    private(set) var isBroadcastActive = false
+
     /// The current session's audio samples (for saving to disk).
     var currentAudioSamples: [Float] {
         if audioCaptureMode == .systemBroadcast, let source = systemAudioSource {
@@ -168,6 +171,14 @@ final class WhisperService {
 
     private let systemMetrics = SystemMetrics()
     private var metricsTask: Task<Void, Never>?
+    private var appDiagLines: [String] = []
+    private func writeAppDiag(_ line: String) {
+        appDiagLines.append(line)
+        guard let url = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: SharedAudioRingBuffer.appGroupID
+        )?.appendingPathComponent("app_diag.txt") else { return }
+        try? appDiagLines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+    }
     private let selectedModelKey = "selectedModelVariant"
     private static let sampleRate: Float = 16000
     private static let displayEnergyFrameLimit = 160
@@ -263,6 +274,7 @@ final class WhisperService {
         }
         migrateLegacyModelFolder()
         setupAudioObservers()
+        registerBroadcastNotifications()
         startMetricsSampling()
     }
 
@@ -282,6 +294,79 @@ final class WhisperService {
                 try? await Task.sleep(for: .seconds(1))
             }
         }
+    }
+
+    // MARK: - Broadcast Notifications (ReplayKit IPC)
+
+    private func registerBroadcastNotifications() {
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+
+        let broadcastStartedName = "com.voiceping.transcribe.broadcastStarted" as CFString
+        CFNotificationCenterAddObserver(
+            center,
+            Unmanaged.passUnretained(self).toOpaque(),
+            { _, observer, _, _, _ in
+                guard let observer else { return }
+                let service = Unmanaged<WhisperService>.fromOpaque(observer).takeUnretainedValue()
+                Task { @MainActor in
+                    service.handleBroadcastStarted()
+                }
+            },
+            broadcastStartedName,
+            nil,
+            .deliverImmediately
+        )
+
+        let broadcastStoppedName = "com.voiceping.transcribe.broadcastStopped" as CFString
+        CFNotificationCenterAddObserver(
+            center,
+            Unmanaged.passUnretained(self).toOpaque(),
+            { _, observer, _, _, _ in
+                guard let observer else { return }
+                let service = Unmanaged<WhisperService>.fromOpaque(observer).takeUnretainedValue()
+                Task { @MainActor in
+                    service.handleBroadcastStopped()
+                }
+            },
+            broadcastStoppedName,
+            nil,
+            .deliverImmediately
+        )
+    }
+
+    private func handleBroadcastStarted() {
+        NSLog("[WhisperService] Broadcast started notification received (mode=%d, recording=%d, state=%d)",
+              audioCaptureMode == .systemBroadcast ? 1 : 0, isRecording ? 1 : 0, sessionState.rawValue)
+        writeAppDiag("[\(Date())] handleBroadcastStarted mode=\(audioCaptureMode) recording=\(isRecording) state=\(sessionState.rawValue)")
+
+        isBroadcastActive = true
+
+        guard audioCaptureMode == .systemBroadcast else { return }
+        guard !isRecording, sessionState == .idle else { return }
+        guard let engine = activeEngine, engine.modelState == .loaded else {
+            NSLog("[WhisperService] Broadcast started but engine not ready — skipping auto-record")
+            return
+        }
+
+        NSLog("[WhisperService] Auto-starting recording for system broadcast")
+        Task {
+            do {
+                try await startRecording()
+            } catch {
+                NSLog("[WhisperService] Failed to auto-start recording for broadcast: \(error)")
+            }
+        }
+    }
+
+    private func handleBroadcastStopped() {
+        NSLog("[WhisperService] Broadcast stopped notification received (recording=%d)", isRecording ? 1 : 0)
+        writeAppDiag("[\(Date())] handleBroadcastStopped recording=\(isRecording)")
+
+        isBroadcastActive = false
+
+        guard audioCaptureMode == .systemBroadcast, isRecording else { return }
+        NSLog("[WhisperService] Auto-stopping recording because broadcast ended")
+        stopRecording()
     }
 
     // MARK: - Audio Session Observers
@@ -593,13 +678,45 @@ final class WhisperService {
     }
 
     func stopRecording() {
+        NSLog("[WhisperService] stopRecording() called — mode=%@, isBroadcastActive=%d, state=%@",
+              String(describing: audioCaptureMode), isBroadcastActive ? 1 : 0, sessionState.rawValue)
+        writeAppDiag("[\(Date())] stopRecording mode=\(audioCaptureMode) broadcastActive=\(isBroadcastActive) state=\(sessionState.rawValue)")
+
         guard sessionState == .recording || sessionState == .interrupted
-            || sessionState == .starting else { return }
+            || sessionState == .starting else {
+            NSLog("[WhisperService] stopRecording() skipped — state=%@ not recording/interrupted/starting", sessionState.rawValue)
+            return
+        }
 
         sessionState = .stopping
         cancelAndTrackTranscriptionTask()
         translationTask?.cancel()
         translationTask = nil
+
+        // Signal broadcast extension to stop BEFORE releasing the ring buffer.
+        // Uses shared memory flag (checked every 200ms via timer in SampleHandler)
+        // plus Darwin notification as backup.
+        if audioCaptureMode == .systemBroadcast && isBroadcastActive {
+            // Set requestStop via shared memory — most reliable cross-process signal
+            if let ringBuf = SharedAudioRingBuffer(isProducer: false) {
+                ringBuf.setRequestStop(true)
+                NSLog("[WhisperService] Set requestStop flag in shared ring buffer")
+            } else {
+                NSLog("[WhisperService] WARNING: Failed to open ring buffer for requestStop!")
+            }
+            // Also send Darwin notification as backup
+            NSLog("[WhisperService] Requesting broadcast stop via Darwin notification")
+            let center = CFNotificationCenterGetDarwinNotifyCenter()
+            CFNotificationCenterPostNotification(
+                center,
+                CFNotificationName("com.voiceping.transcribe.stopBroadcast" as CFString),
+                nil, nil, true
+            )
+        } else {
+            NSLog("[WhisperService] Skipping broadcast stop signal — mode=%@, broadcastActive=%d",
+                  String(describing: audioCaptureMode), isBroadcastActive ? 1 : 0)
+        }
+
         systemAudioSource?.stop()
         systemAudioSource = nil
         activeEngine?.stopRecording()

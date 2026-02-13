@@ -102,6 +102,9 @@ struct ModelSetupView: View {
                     .padding(.horizontal)
             }
         }
-        .padding(.bottom, 32)
+        .padding(.bottom, 8)
+
+        AppVersionLabel()
+            .padding(.bottom, 16)
     }
 }

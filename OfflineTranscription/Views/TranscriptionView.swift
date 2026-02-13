@@ -7,6 +7,7 @@ struct TranscriptionView: View {
 
     @State private var recordingStartDate: Date?
     @State private var didAutoTest = false
+    @State private var triggerBroadcast = false
     @State private var lastAutoScrollAt: Date = .distantPast
 
     private let autoScrollInterval: TimeInterval = 0.25
@@ -189,20 +190,12 @@ struct TranscriptionView: View {
                 .accessibilityIdentifier("audio_source_picker")
             }
 
-            // System broadcast info + picker
-            if whisperService.audioCaptureMode == .systemBroadcast, !(viewModel?.isRecording ?? false) {
-                VStack(spacing: 8) {
-                    Text("Tap to start system audio capture (ReplayKit). For privacy, iOS does not expose carrier phone-call audio to third-party apps.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-
-                    BroadcastPickerView()
-                        .frame(width: 50, height: 50)
-                        .accessibilityIdentifier("broadcast_picker")
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 4)
+            // Hidden broadcast picker — must be in view hierarchy for system sheet
+            if whisperService.audioCaptureMode == .systemBroadcast {
+                BroadcastPickerView(triggerBroadcast: $triggerBroadcast)
+                    .frame(width: 1, height: 1)
+                    .opacity(0.01)
+                    .allowsHitTesting(false)
             }
 
             // Controls
@@ -221,8 +214,14 @@ struct TranscriptionView: View {
                 RecordButton(
                     isRecording: viewModel?.isRecording ?? false
                 ) {
-                    Task {
-                        await viewModel?.toggleRecording()
+                    if whisperService.audioCaptureMode == .systemBroadcast
+                        && !(viewModel?.isRecording ?? false)
+                        && !whisperService.isBroadcastActive {
+                        triggerBroadcast = true
+                    } else {
+                        Task {
+                            await viewModel?.toggleRecording()
+                        }
                     }
                 }
                 .disabled(viewModel?.isTranscribingFile ?? false)
@@ -236,6 +235,9 @@ struct TranscriptionView: View {
                 .accessibilityIdentifier("settings_button")
             }
             .padding()
+
+            AppVersionLabel()
+                .padding(.bottom, 4)
         }
         .navigationTitle("Transcribe")
         .navigationBarTitleDisplayMode(.inline)
@@ -525,6 +527,11 @@ struct ModelSettingsSheet: View {
                         .accessibilityIdentifier("vad_toggle")
                     Toggle("Enable Timestamps", isOn: $service.enableTimestamps)
                         .accessibilityIdentifier("timestamps_toggle")
+                }
+
+                Section {
+                    AppVersionLabel()
+                        .frame(maxWidth: .infinity)
                 }
             }
             .navigationTitle("Settings")

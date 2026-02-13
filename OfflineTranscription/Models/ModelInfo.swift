@@ -212,9 +212,9 @@ struct ModelInfo: Identifiable, Hashable {
 
     static let defaultModel = availableModels.first { $0.id == "whisper-base" }!
     private static let familyDisplayOrder: [ModelFamily] = [
+        .senseVoice,
         .whisper,
         .moonshine,
-        .senseVoice,
         .zipformer,
         .omnilingual,
         .parakeet,
