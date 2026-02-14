@@ -43,11 +43,27 @@ jobs:
           rm -f "$zip_path"
           ditto -c -k --sequesterRsrc --keepParent "$app_path" "$zip_path"
 
+      - name: Validate iOS simulator package
+        run: |
+          set -euo pipefail
+          zip_path="build/OfflineTranscription-iOS-Simulator-${{ github.sha }}.zip"
+          [ -s "$zip_path" ] || { echo "Missing or empty iOS package: $zip_path" >&2; exit 1; }
+          unzip -t "$zip_path" >/dev/null
+          unzip -l "$zip_path" | rg -q "OfflineTranscription\\.app/"
+          shasum -a 256 "$zip_path" | tee build/ios-simulator.sha256
+
       - name: Upload iOS app artifact
         uses: actions/upload-artifact@v4
         with:
           name: ios-simulator-app
           path: build/OfflineTranscription-iOS-Simulator-${{ github.sha }}.zip
+          if-no-files-found: error
+
+      - name: Upload iOS checksum artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-checksum
+          path: build/ios-simulator.sha256
           if-no-files-found: error
 
   macos-build:
@@ -90,6 +106,23 @@ jobs:
           chmod +x ./scripts/create-dmg.sh
           ./scripts/create-dmg.sh
 
+      - name: Validate macOS DMG package
+        run: |
+          set -euo pipefail
+          dmg_path="$(ls -1 build/VoicePingOfflineTranscribe-*.dmg | head -n 1)"
+          [ -s "$dmg_path" ] || { echo "Missing or empty DMG: $dmg_path" >&2; exit 1; }
+          hdiutil verify "$dmg_path"
+
+          attach_output="$(hdiutil attach -nobrowse -readonly "$dmg_path")"
+          device="$(echo "$attach_output" | awk -F '\t' '/\/Volumes\//{print $1; exit}')"
+          volume="$(echo "$attach_output" | awk -F '\t' '/\/Volumes\//{print $NF; exit}')"
+          app_path="$volume/OfflineTranscriptionMac.app"
+          [ -d "$app_path" ] || { echo "App bundle missing in DMG" >&2; exit 1; }
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          hdiutil detach "$device"
+
+          shasum -a 256 "$dmg_path" | tee build/macos-dmg.sha256
+
       - name: Upload macOS app artifact
         uses: actions/upload-artifact@v4
         with:
@@ -102,6 +135,13 @@ jobs:
         with:
           name: macos-dmg
           path: build/VoicePingOfflineTranscribe-*.dmg
+          if-no-files-found: error
+
+      - name: Upload macOS checksum artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg-checksum
+          path: build/macos-dmg.sha256
           if-no-files-found: error
 
   publish-release:
@@ -117,10 +157,22 @@ jobs:
           name: ios-simulator-app
           path: release-assets/ios
 
+      - name: Download iOS checksum artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-simulator-checksum
+          path: release-assets/ios
+
       - name: Download macOS DMG artifact
         uses: actions/download-artifact@v4
         with:
           name: macos-dmg
+          path: release-assets/macos
+
+      - name: Download macOS checksum artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-dmg-checksum
           path: release-assets/macos
 
       - name: Publish GitHub release assets
@@ -132,6 +184,8 @@ jobs:
           generate_release_notes: true
           files: |
             release-assets/ios/*.zip
+            release-assets/ios/*.sha256
             release-assets/macos/*.dmg
+            release-assets/macos/*.sha256
           fail_on_unmatched_files: true
           overwrite_files: true
