@@ -16,7 +16,7 @@ enum BackendFeatureFlags {
         case .automatic, .legacy:
             return true
         case .cactus:
-            return boolValue(for: cactusKey, defaultValue: defaultExperimentalBackendValue)
+            return boolValue(for: cactusKey, defaultValue: true)
         case .mlx:
             return boolValue(for: mlxKey, defaultValue: defaultExperimentalBackendValue)
         }

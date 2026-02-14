@@ -402,7 +402,7 @@ struct ModelInfo: Identifiable, Hashable {
         case .fluidAudio:
             return "FluidAudio · CoreML"
         case .cactus:
-            return "Cactus · Optimized Runtime"
+            return "Cactus · whisper.cpp"
         case .mlx:
             return "MLX · Metal GPU"
         case .appleSpeech:

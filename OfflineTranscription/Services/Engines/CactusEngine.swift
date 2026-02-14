@@ -118,28 +118,33 @@ final class CactusEngine: ASREngine {
             throw AppError.modelNotReady
         }
 
-        let text: String
+        let result: CactusTranscriptionResult
         do {
-            text = try runtime.transcribe(samples: audioArray, language: options.language)
+            result = try runtime.transcribe(samples: audioArray, language: options.language)
         } catch {
             throw AppError.transcriptionFailed(underlying: error)
         }
 
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+        guard !result.text.isEmpty else {
             return ASRResult(text: "", segments: [], language: options.language)
         }
 
-        let duration = Float(audioArray.count) / 16000
-        let segment = ASRSegment(
-            id: segmentIdCounter,
-            text: " " + trimmed,
-            start: 0,
-            end: duration
-        )
-        segmentIdCounter += 1
+        let segments: [ASRSegment] = result.segments.map { seg in
+            let s = ASRSegment(
+                id: segmentIdCounter,
+                text: seg.text,
+                start: Float(seg.startMs) / 1000.0,
+                end: Float(seg.endMs) / 1000.0
+            )
+            segmentIdCounter += 1
+            return s
+        }
 
-        return ASRResult(text: trimmed, segments: [segment], language: options.language)
+        return ASRResult(
+            text: result.text,
+            segments: segments,
+            language: result.language ?? options.language
+        )
     }
 
     private func makeDownloadRequest(for model: ModelInfo) async throws -> ArtifactDownloadRequest? {

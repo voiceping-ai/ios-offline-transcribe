@@ -21,6 +21,27 @@
           "legacyModelId": "whisper-tiny",
           "artifacts": [],
           "isEnabled": true
+        },
+        {
+          "id": "whisper-tiny-cactus-v1",
+          "backend": "cactus",
+          "engineType": "cactus",
+          "runtimeLabel": "Cactus · whisper.cpp",
+          "platforms": ["ios", "catalyst"],
+          "architectures": ["arm64"],
+          "minimumOSVersion": "17.0",
+          "legacyModelId": null,
+          "artifacts": [
+            {
+              "id": "model-bin",
+              "relativePath": "ggml-tiny-q5_1.bin",
+              "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q5_1.bin",
+              "checksum": "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7",
+              "checksumAlgorithm": "sha256",
+              "sizeBytes": 32152673
+            }
+          ],
+          "isEnabled": true
         }
       ]
     },
@@ -49,7 +70,7 @@
           "id": "whisper-base-cactus-v1",
           "backend": "cactus",
           "engineType": "cactus",
-          "runtimeLabel": "Cactus · Optimized Runtime",
+          "runtimeLabel": "Cactus · whisper.cpp",
           "platforms": ["ios", "catalyst"],
           "architectures": ["arm64"],
           "minimumOSVersion": "17.0",
@@ -57,11 +78,11 @@
           "artifacts": [
             {
               "id": "model-bin",
-              "relativePath": "model.bin",
-              "url": "https://example.com/models/whisper-base/cactus/v1/model.bin",
-              "checksum": "0000000000000000000000000000000000000000000000000000000000000000",
+              "relativePath": "ggml-base-q5_1.bin",
+              "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q5_1.bin",
+              "checksum": "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898",
               "checksumAlgorithm": "sha256",
-              "sizeBytes": 0
+              "sizeBytes": 59707625
             }
           ],
           "isEnabled": true
@@ -70,7 +91,7 @@
           "id": "whisper-base-mlx-v1",
           "backend": "mlx",
           "engineType": "mlx",
-          "runtimeLabel": "MLX · Metal GPU",
+          "runtimeLabel": "MLX · Metal GPU (Placeholder)",
           "platforms": ["macOS", "catalyst"],
           "architectures": ["arm64"],
           "minimumOSVersion": "14.0",
@@ -108,6 +129,27 @@
           "minimumOSVersion": null,
           "legacyModelId": "whisper-small",
           "artifacts": [],
+          "isEnabled": true
+        },
+        {
+          "id": "whisper-small-cactus-v1",
+          "backend": "cactus",
+          "engineType": "cactus",
+          "runtimeLabel": "Cactus · whisper.cpp",
+          "platforms": ["ios", "catalyst"],
+          "architectures": ["arm64"],
+          "minimumOSVersion": "17.0",
+          "legacyModelId": null,
+          "artifacts": [
+            {
+              "id": "model-bin",
+              "relativePath": "ggml-small-q5_1.bin",
+              "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin",
+              "checksum": "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
+              "checksumAlgorithm": "sha256",
+              "sizeBytes": 190085487
+            }
+          ],
           "isEnabled": true
         }
       ]
