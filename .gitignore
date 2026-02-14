@@ -28,6 +28,7 @@ project.local.yml
 # Swift Package Manager
 .swiftpm/xcode/xcuserdata/
 Package.resolved
+.build/
 
 # sherpa-onnx binaries (download from GitHub releases, see README)
 LocalPackages/SherpaOnnxKit/*.xcframework/

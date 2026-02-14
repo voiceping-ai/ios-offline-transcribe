@@ -14,17 +14,22 @@ final class AllModelsE2ETest: XCTestCase {
 
     // Per-model timeout (seconds) for download + load + transcribe
     // Must be larger than app-side polling timeout (TranscriptionView auto-test)
-    private func timeout(for modelId: String) -> TimeInterval {
+    private func timeout(for modelId: String, backend: String? = nil) -> TimeInterval {
+        let base: TimeInterval
         switch modelId {
-        case let id where id.contains("large"): return 480
-        case let id where id.contains("300m"): return 360
-        case let id where id.contains("small"): return 300
-        case let id where id.contains("base"): return 240
-        default: return 150
+        case let id where id.contains("large"): base = 480
+        case let id where id.contains("qwen"): base = 1200
+        case let id where id.contains("300m"): base = 360
+        case let id where id.contains("small"): base = 300
+        case let id where id.contains("base"): base = 240
+        default: base = 150
         }
+        // Cactus backend needs extra time for GGML model download on first run
+        if backend == "cactus" { return max(base, 300) + 120 }
+        return base
     }
 
-    // MARK: - Individual model tests
+    // MARK: - Individual model tests (default/legacy backend)
 
     func test_whisperTiny() { testModel("whisper-tiny") }
     func test_whisperBase() { testModel("whisper-base") }
@@ -38,13 +43,24 @@ final class AllModelsE2ETest: XCTestCase {
     func test_omnilingual300m() { testModel("omnilingual-300m") }
     func test_parakeetTdtV3() { testModel("parakeet-tdt-v3") }
     func test_appleSpeech() { testModel("apple-speech") }
+    func test_qwen3Asr06bCpu() { testModel("qwen3-asr-0.6b") }
+    func test_qwen3Asr06bOnnx() { testModel("qwen3-asr-0.6b-onnx") }
+
+    // MARK: - Cactus (whisper.cpp) backend tests
+
+    func test_whisperTiny_cactus() { testModel("whisper-tiny", backend: "cactus") }
+    func test_whisperBase_cactus() { testModel("whisper-base", backend: "cactus") }
+    func test_whisperSmall_cactus() { testModel("whisper-small", backend: "cactus") }
+    func test_whisperLargeV3Turbo_cactus() { testModel("whisper-large-v3-turbo", backend: "cactus") }
+    func test_whisperLargeV3TurboCompressed_cactus() { testModel("whisper-large-v3-turbo-compressed", backend: "cactus") }
 
     // MARK: - Core test logic
 
-    private func testModel(_ modelId: String) {
-        let evidenceDir = "/tmp/e2e_evidence/\(modelId)"
-        let resultPath = "/tmp/e2e_result_\(modelId).json"
-        let timeoutSec = timeout(for: modelId)
+    private func testModel(_ modelId: String, backend: String? = nil) {
+        let suffix = backend.map { "_\($0)" } ?? ""
+        let evidenceDir = "/tmp/e2e_evidence/\(modelId)\(suffix)"
+        let resultPath = "/tmp/e2e_result_\(modelId)\(suffix).json"
+        let timeoutSec = timeout(for: modelId, backend: backend)
 
         // Clean up previous evidence
         try? FileManager.default.removeItem(atPath: evidenceDir)
@@ -53,7 +69,11 @@ final class AllModelsE2ETest: XCTestCase {
 
         // 1. Launch app with auto-test args
         let app = XCUIApplication()
-        app.launchArguments = ["--auto-test", "--model-id", modelId]
+        var launchArgs = ["--auto-test", "--model-id", modelId]
+        if let backend = backend {
+            launchArgs += ["--backend", backend]
+        }
+        app.launchArguments = launchArgs
         app.launch()
         allowPermissionAlertsIfNeeded(app: app)
 

@@ -17,6 +17,25 @@ enum PermissionManager {
         #endif
     }
 
+    static func openSpeechRecognitionSettings() {
+        #if os(iOS)
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+        #elseif os(macOS)
+        let candidates = [
+            "x-apple.systempreferences:com.apple.preference.keyboard?Dictation",
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition"
+        ]
+        for candidate in candidates {
+            guard let url = URL(string: candidate) else { continue }
+            if NSWorkspace.shared.open(url) { return }
+        }
+        if let fallback = URL(string: "x-apple.systempreferences:") {
+            _ = NSWorkspace.shared.open(fallback)
+        }
+        #endif
+    }
+
     static func requestMicrophonePermission() async -> Bool {
         #if os(macOS)
         return await AVCaptureDevice.requestAccess(for: .audio)

@@ -9,7 +9,6 @@ struct TranscriptionView: View {
     @State private var showSettings = false
 
     @State private var recordingStartDate: Date?
-    @State private var didAutoTest = false
     @State private var triggerBroadcast = false
     @State private var lastAutoScrollAt: Date = .distantPast
 
@@ -19,246 +18,11 @@ struct TranscriptionView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Transcription text area
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
-                        if let vm = viewModel {
-                            let confirmedText = vm.confirmedText
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
-                            let hypothesisText = vm.hypothesisText
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
-
-                            if !confirmedText.isEmpty {
-                                Text(confirmedText)
-                                    .font(.body)
-                                    .foregroundStyle(.primary)
-                                    .accessibilityIdentifier("confirmed_text")
-                            }
-
-                            if !hypothesisText.isEmpty {
-                                Text(hypothesisText)
-                                    .font(.body)
-                                    .foregroundStyle(.secondary)
-                                    .italic()
-                                    .accessibilityIdentifier("hypothesis_text")
-                            }
-
-                            if confirmedText.isEmpty && hypothesisText.isEmpty
-                                && !vm.isRecording && !vm.isInterrupted
-                            {
-                                if vm.showPermissionDenied {
-                                    permissionDeniedView(vm: vm)
-                                } else {
-                                    Text(placeholderText)
-                                        .font(.body)
-                                        .foregroundStyle(.tertiary)
-                                        .accessibilityIdentifier("idle_placeholder")
-                                }
-                            }
-
-                            if vm.isRecording && confirmedText.isEmpty
-                                && hypothesisText.isEmpty
-                            {
-                                Text("Listening...")
-                                    .font(.body)
-                                    .foregroundStyle(.tertiary)
-                                    .accessibilityIdentifier("listening_text")
-                            }
-
-                            if vm.isInterrupted {
-                                interruptedBanner
-                            }
-                        }
-
-                        Color.clear
-                            .frame(height: 1)
-                            .id("bottom")
-                    }
-                    .padding()
-                }
-                .onChange(of: viewModel?.confirmedText ?? "") { _, _ in
-                    guard viewModel?.isRecording == true else { return }
-                    let now = Date()
-                    guard now.timeIntervalSince(lastAutoScrollAt) >= autoScrollInterval else { return }
-                    lastAutoScrollAt = now
-                    proxy.scrollTo("bottom", anchor: .bottom)
-                }
-                .onChange(of: viewModel?.hypothesisText ?? "") { _, _ in
-                    guard viewModel?.isRecording == true else { return }
-                    let now = Date()
-                    guard now.timeIntervalSince(lastAutoScrollAt) >= autoScrollInterval else { return }
-                    lastAutoScrollAt = now
-                    proxy.scrollTo("bottom", anchor: .bottom)
-                }
-                .onChange(of: viewModel?.isRecording ?? false) { _, isRecording in
-                    if isRecording {
-                        recordingStartDate = Date()
-                        lastAutoScrollAt = Date()
-                        proxy.scrollTo("bottom", anchor: .bottom)
-                    } else {
-                        recordingStartDate = nil
-                    }
-                }
-            }
-
-            Divider()
-
-            // Audio visualizer
-            if let vm = viewModel, vm.isRecording {
-                AudioVisualizerView(energyLevels: vm.bufferEnergy)
-                    .frame(height: 60)
-                    .padding(.horizontal)
-            }
-
-            // Stats bar
-            if let vm = viewModel, vm.isRecording {
-                HStack {
-                    Label(
-                        FormatUtils.formatDuration(vm.bufferSeconds),
-                        systemImage: "clock"
-                    )
-                    Spacer()
-                    if vm.tokensPerSecond > 0 {
-                        Text(String(format: "%.1f tok/s", vm.tokensPerSecond))
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal)
-                .padding(.vertical, 4)
-                .accessibilityIdentifier("stats_bar")
-            }
-
-            // Model info (always visible)
-            if let vm = viewModel {
-                VStack(spacing: 4) {
-                    Text("\(vm.selectedModel.displayName) · \(vm.selectedModel.languages)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(whisperService.effectiveRuntimeLabel)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 2)
-                        .background(
-                            Capsule()
-                                .fill(Color.accentColor.opacity(0.12))
-                        )
-                    if let warning = whisperService.backendFallbackWarning {
-                        Text(warning)
-                            .font(.caption2)
-                            .foregroundStyle(.orange)
-                    }
-                }
-                .padding(.vertical, 4)
-                .accessibilityIdentifier("model_info_label")
-            }
-
-            // Resource stats (always visible)
-            if let vm = viewModel {
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    let elapsed: Int = if let start = recordingStartDate, vm.isRecording {
-                        Int(context.date.timeIntervalSince(start))
-                    } else {
-                        0
-                    }
-                    HStack(spacing: 16) {
-                        if vm.isRecording {
-                            Text("\(elapsed)s")
-                        }
-                        Text(String(format: "CPU %.0f%%", vm.cpuPercent))
-                        Text(String(format: "RAM %.0f MB", vm.memoryMB))
-                        if vm.tokensPerSecond > 0 {
-                            Text(String(format: "%.1f tok/s", vm.tokensPerSecond))
-                        }
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.vertical, 4)
-            }
-
-            // File transcription progress
-            if let vm = viewModel, vm.isTranscribingFile {
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text("Transcribing file...")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 4)
-                .accessibilityIdentifier("file_transcribing_indicator")
-            }
-
+        mainContent
+            .navigationTitle("Transcribe")
             #if os(iOS)
-            // Audio source selector
-            if viewModel != nil, !(viewModel?.isRecording ?? false) {
-                @Bindable var service = whisperService
-                Picker("Audio Source", selection: $service.audioCaptureMode) {
-                    Label("Voice", systemImage: "mic.fill").tag(AudioCaptureMode.microphone)
-                    Label("System", systemImage: "rectangle.dashed.badge.record").tag(AudioCaptureMode.systemBroadcast)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .accessibilityIdentifier("audio_source_picker")
-            }
-
-            // Hidden broadcast picker — must be in view hierarchy for system sheet
-            if whisperService.audioCaptureMode == .systemBroadcast {
-                BroadcastPickerView(triggerBroadcast: $triggerBroadcast)
-                    .frame(width: 1, height: 1)
-                    .opacity(0.01)
-                    .allowsHitTesting(false)
-            }
+            .navigationBarTitleDisplayMode(.inline)
             #endif
-
-            // Controls
-            HStack(spacing: 32) {
-                if let vm = viewModel, !vm.isRecording && !vm.isTranscribingFile {
-                    Button {
-                        let wavPath = Bundle.main.path(forResource: "test_speech", ofType: "wav") ?? "/tmp/test_speech.wav"
-                        vm.transcribeTestFile(wavPath)
-                    } label: {
-                        Image(systemName: "doc.text.fill")
-                            .font(.title2)
-                    }
-                    .accessibilityIdentifier("test_file_button")
-                }
-
-                RecordButton(
-                    isRecording: viewModel?.isRecording ?? false
-                ) {
-                    if whisperService.audioCaptureMode == .systemBroadcast
-                        && !(viewModel?.isRecording ?? false)
-                        && !whisperService.isBroadcastActive {
-                        triggerBroadcast = true
-                    } else {
-                        Task {
-                            await viewModel?.toggleRecording()
-                        }
-                    }
-                }
-                .disabled(viewModel?.isTranscribingFile ?? false)
-
-                Button {
-                    showSettings = true
-                } label: {
-                    Image(systemName: "gear")
-                        .font(.title2)
-                }
-                .accessibilityIdentifier("settings_button")
-            }
-            .padding()
-
-            AppVersionLabel()
-                .padding(.bottom, 4)
-        }
-        .navigationTitle("Transcribe")
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
         .overlay(alignment: .topTrailing) {
             #if DEBUG
             if isAutoTestMode, !whisperService.e2eOverlayPayload.isEmpty {
@@ -283,99 +47,339 @@ struct TranscriptionView: View {
             }
             #endif
         }
-        .sheet(isPresented: $showSettings) {
-            ModelSettingsSheet(
-                fullText: viewModel?.fullText ?? "",
-                onCopyText: {
-                    #if os(macOS)
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(viewModel?.fullText ?? "", forType: .string)
-                    #else
-                    UIPasteboard.general.string = viewModel?.fullText ?? ""
-                    #endif
-                },
-                onClearTranscription: {
-                    viewModel?.clearTranscription()
-                }
-            )
-        }
-        .alert(
-            "Error",
-            isPresented: .init(
-                get: { viewModel?.showError ?? false },
-                set: { newValue in
-                    guard viewModel != nil else { return }
-                    viewModel?.showError = newValue
-                }
-            )
-        ) {
-            if viewModel?.showPermissionDenied == true {
-                Button("Open Settings") { viewModel?.openSettings() }
-                Button("Cancel", role: .cancel) {}
-            } else {
-                Button("OK", role: .cancel) {}
+            #if os(iOS)
+            .sheet(isPresented: $showSettings) {
+                settingsSheetContent
             }
-        } message: {
-            Text(viewModel?.errorMessage ?? "")
-        }
-        .onChange(of: whisperService.lastError != nil) { _, hasError in
-            guard hasError, viewModel != nil else { return }
-            viewModel?.surfaceEngineError()
-        }
-        .onAppear {
-            if viewModel == nil {
-                viewModel = TranscriptionViewModel(whisperService: whisperService)
+            #endif
+            #if os(macOS)
+            .inspector(isPresented: $showSettings) {
+                MacSettingsPanel()
             }
-        }
-        #if DEBUG
-        .task {
-            // Auto-test: wait for model to load, then transcribe test file
-            guard ProcessInfo.processInfo.arguments.contains("--auto-test") else { return }
-            let args = ProcessInfo.processInfo.arguments
-            let argsDump = args.joined(separator: "\n")
-            try? argsDump.write(
-                to: URL(fileURLWithPath: "/tmp/ios_args_runtime.txt"),
-                atomically: true,
-                encoding: .utf8
-            )
-            let modelId = Self.autoTestModelId(from: args) ?? whisperService.selectedModel.id
-            let timeoutSeconds = Self.autoTestLoadTimeoutSeconds(for: modelId)
-            let deadline = Date().addingTimeInterval(timeoutSeconds)
-
-            // Wait until model is loaded, but fail fast with an E2E result when setup stalls.
-            while whisperService.modelState != .loaded && Date() < deadline {
-                if whisperService.modelState == .error || whisperService.modelState == .unloaded {
-                    break
-                }
-                try? await Task.sleep(for: .milliseconds(200))
-            }
-            guard whisperService.modelState == .loaded else {
-                whisperService.writeE2EFailure(
-                    reason: "model load failed/timed out for \(modelId) (state=\(whisperService.modelState.rawValue))"
+            #endif
+            .alert(
+                "Error",
+                isPresented: .init(
+                    get: { viewModel?.showError ?? false },
+                    set: { newValue in
+                        guard viewModel != nil else { return }
+                        viewModel?.showError = newValue
+                    }
                 )
-                return
+            ) {
+                if viewModel?.showPermissionDenied == true {
+                    Button("Open Settings") { viewModel?.openSettings() }
+                    Button("Cancel", role: .cancel) {}
+                } else if viewModel?.showSpeechRecognitionUnavailable == true {
+                    Button("Open Dictation Settings") {
+                        viewModel?.openSpeechRecognitionSettings()
+                    }
+                    Button("OK", role: .cancel) {}
+                } else {
+                    Button("OK", role: .cancel) {}
+                }
+            } message: {
+                Text(viewModel?.errorMessage ?? "")
             }
-            guard !didAutoTest else { return }
-            didAutoTest = true
-            try? await Task.sleep(for: .milliseconds(500))
-            let wavPath = Bundle.main.path(forResource: "test_speech", ofType: "wav") ?? "/tmp/test_speech.wav"
-            viewModel?.transcribeTestFile(wavPath)
+            .onChange(of: whisperService.lastError != nil) { _, hasError in
+                guard hasError, viewModel != nil else { return }
+                viewModel?.surfaceEngineError()
+            }
+            .onAppear {
+                if viewModel == nil {
+                    viewModel = TranscriptionViewModel(whisperService: whisperService)
+                }
+            }
+    }
+
+    private var mainContent: some View {
+        VStack(spacing: 0) {
+            transcriptionArea
+
+            Divider()
+
+            recordingVisualizerSection
+            recordingStatsBar
+            modelInfoSection
+            resourceStatsSection
+            fileTranscriptionProgressSection
+
+            #if os(iOS)
+            iosAudioSourceSection
+            #endif
+
+            controlsSection
+
+            AppVersionLabel()
+                .padding(.bottom, 4)
         }
+    }
+
+    private var transcriptionArea: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let vm = viewModel {
+                        let confirmedText = vm.confirmedText
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                        let hypothesisText = vm.hypothesisText
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                        if !confirmedText.isEmpty {
+                            Text(confirmedText)
+                                .font(.body)
+                                .foregroundStyle(.primary)
+                                .accessibilityIdentifier("confirmed_text")
+                        }
+
+                        if !hypothesisText.isEmpty {
+                            Text(hypothesisText)
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                                .italic()
+                                .accessibilityIdentifier("hypothesis_text")
+                        }
+
+                        if confirmedText.isEmpty && hypothesisText.isEmpty
+                            && !vm.isRecording && !vm.isInterrupted
+                        {
+                            if vm.showPermissionDenied {
+                                permissionDeniedView(vm: vm)
+                            } else {
+                                Text(placeholderText)
+                                    .font(.body)
+                                    .foregroundStyle(.tertiary)
+                                    .accessibilityIdentifier("idle_placeholder")
+                            }
+                        }
+
+                        if vm.isRecording && confirmedText.isEmpty
+                            && hypothesisText.isEmpty
+                        {
+                            Text("Listening...")
+                                .font(.body)
+                                .foregroundStyle(.tertiary)
+                                .accessibilityIdentifier("listening_text")
+                        }
+
+                        if vm.isInterrupted {
+                            interruptedBanner
+                        }
+                    }
+
+                    Color.clear
+                        .frame(height: 1)
+                        .id("bottom")
+                }
+                .padding()
+            }
+            .onChange(of: viewModel?.confirmedText ?? "") { _, _ in
+                guard viewModel?.isRecording == true else { return }
+                let now = Date()
+                guard now.timeIntervalSince(lastAutoScrollAt) >= autoScrollInterval else { return }
+                lastAutoScrollAt = now
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
+            .onChange(of: viewModel?.hypothesisText ?? "") { _, _ in
+                guard viewModel?.isRecording == true else { return }
+                let now = Date()
+                guard now.timeIntervalSince(lastAutoScrollAt) >= autoScrollInterval else { return }
+                lastAutoScrollAt = now
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
+            .onChange(of: viewModel?.isRecording ?? false) { _, isRecording in
+                if isRecording {
+                    recordingStartDate = Date()
+                    lastAutoScrollAt = Date()
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                } else {
+                    recordingStartDate = nil
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var recordingVisualizerSection: some View {
+        if let vm = viewModel, vm.isRecording {
+            AudioVisualizerView(energyLevels: vm.bufferEnergy)
+                .frame(height: 60)
+                .padding(.horizontal)
+        }
+    }
+
+    @ViewBuilder
+    private var recordingStatsBar: some View {
+        if let vm = viewModel, vm.isRecording {
+            HStack {
+                Label(
+                    FormatUtils.formatDuration(vm.bufferSeconds),
+                    systemImage: "clock"
+                )
+                Spacer()
+                if vm.tokensPerSecond > 0 {
+                    Text(String(format: "%.1f tok/s", vm.tokensPerSecond))
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal)
+            .padding(.vertical, 4)
+            .accessibilityIdentifier("stats_bar")
+        }
+    }
+
+    @ViewBuilder
+    private var modelInfoSection: some View {
+        if let vm = viewModel {
+            VStack(spacing: 4) {
+                Text("\(vm.selectedModel.displayName) · \(vm.selectedModel.languages)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(whisperService.effectiveRuntimeLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule()
+                            .fill(Color.accentColor.opacity(0.12))
+                    )
+                if let warning = whisperService.backendFallbackWarning {
+                    Text(warning)
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+            }
+            .padding(.vertical, 4)
+            .accessibilityIdentifier("model_info_label")
+        }
+    }
+
+    @ViewBuilder
+    private var resourceStatsSection: some View {
+        if let vm = viewModel {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                let elapsed: Int = if let start = recordingStartDate, vm.isRecording {
+                    Int(context.date.timeIntervalSince(start))
+                } else {
+                    0
+                }
+                HStack(spacing: 16) {
+                    if vm.isRecording {
+                        Text("\(elapsed)s")
+                    }
+                    Text(String(format: "CPU %.0f%%", vm.cpuPercent))
+                    Text(String(format: "RAM %.0f MB", vm.memoryMB))
+                    if vm.tokensPerSecond > 0 {
+                        Text(String(format: "%.1f tok/s", vm.tokensPerSecond))
+                    }
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 4)
+        }
+    }
+
+    @ViewBuilder
+    private var fileTranscriptionProgressSection: some View {
+        if let vm = viewModel, vm.isTranscribingFile {
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("Transcribing file...")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 4)
+            .accessibilityIdentifier("file_transcribing_indicator")
+        }
+    }
+
+    #if os(iOS)
+    @ViewBuilder
+    private var iosAudioSourceSection: some View {
+        if viewModel != nil, !(viewModel?.isRecording ?? false) {
+            @Bindable var service = whisperService
+            Picker("Audio Source", selection: $service.audioCaptureMode) {
+                Label("Voice", systemImage: "mic.fill").tag(AudioCaptureMode.microphone)
+                Label("System", systemImage: "rectangle.dashed.badge.record").tag(AudioCaptureMode.systemBroadcast)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .accessibilityIdentifier("audio_source_picker")
+        }
+
+        // Hidden broadcast picker — must be in view hierarchy for system sheet
+        if whisperService.audioCaptureMode == .systemBroadcast {
+            BroadcastPickerView(triggerBroadcast: $triggerBroadcast)
+                .frame(width: 1, height: 1)
+                .opacity(0.01)
+                .allowsHitTesting(false)
+        }
+    }
+    #endif
+
+    private var controlsSection: some View {
+        HStack(spacing: 32) {
+            if let vm = viewModel, !vm.isRecording && !vm.isTranscribingFile {
+                Button {
+                    let wavPath = Bundle.main.path(forResource: "test_speech", ofType: "wav") ?? "/tmp/test_speech.wav"
+                    vm.transcribeTestFile(wavPath)
+                } label: {
+                    Image(systemName: "doc.text.fill")
+                        .font(.title2)
+                }
+                .accessibilityIdentifier("test_file_button")
+            }
+
+            RecordButton(
+                isRecording: viewModel?.isRecording ?? false
+            ) {
+                if whisperService.audioCaptureMode == .systemBroadcast
+                    && !(viewModel?.isRecording ?? false)
+                    && !whisperService.isBroadcastActive {
+                    triggerBroadcast = true
+                } else {
+                    Task {
+                        await viewModel?.toggleRecording()
+                    }
+                }
+            }
+            .disabled(viewModel?.isTranscribingFile ?? false)
+
+            settingsButton
+        }
+        .padding()
+    }
+
+    @ViewBuilder
+    private var settingsButton: some View {
+        #if os(macOS)
+        Button {
+            showSettings.toggle()
+        } label: {
+            Label("Models", systemImage: "slider.horizontal.3")
+        }
+        .buttonStyle(.borderedProminent)
+        .accessibilityIdentifier("settings_button")
+        #else
+        Button {
+            showSettings = true
+        } label: {
+            Image(systemName: "gear")
+                .font(.title2)
+        }
+        .accessibilityIdentifier("settings_button")
         #endif
     }
 
-    private static func autoTestModelId(from args: [String]) -> String? {
-        guard let index = args.firstIndex(of: "--model-id"), index + 1 < args.count else {
-            return nil
-        }
-        return args[index + 1]
-    }
-
-    private static func autoTestLoadTimeoutSeconds(for modelId: String) -> TimeInterval {
-        if modelId.contains("large") || modelId.contains("omnilingual") { return 480 }
-        if modelId == "whisper-small" || modelId == "parakeet-tdt-v3" { return 300 }
-        if modelId == "whisper-base" { return 240 }
-        return 120
+    @ViewBuilder
+    private var settingsSheetContent: some View {
+        ModelSettingsSheet()
+        #if os(macOS)
+        .frame(minWidth: 760, minHeight: 700)
+        #endif
     }
 
     // MARK: - Subviews
@@ -427,16 +431,25 @@ struct ModelSettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isSwitching = false
 
-    let fullText: String
-    let onCopyText: () -> Void
-    let onClearTranscription: () -> Void
+    private var fullText: String {
+        whisperService.fullTranscriptionText
+    }
+
+    private func copyTextToClipboard() {
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(fullText, forType: .string)
+        #else
+        UIPasteboard.general.string = fullText
+        #endif
+    }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("Actions") {
                     Button {
-                        onCopyText()
+                        copyTextToClipboard()
                     } label: {
                         Label("Copy Text", systemImage: "doc.on.doc")
                     }
@@ -444,7 +457,7 @@ struct ModelSettingsSheet: View {
                     .disabled(fullText.isEmpty)
 
                     Button(role: .destructive) {
-                        onClearTranscription()
+                        whisperService.clearTranscription()
                     } label: {
                         Label("Clear Transcription", systemImage: "trash")
                     }
@@ -543,9 +556,11 @@ struct ModelSettingsSheet: View {
                                 Task {
                                     await whisperService.setupModel()
                                     isSwitching = false
+                                    #if os(iOS)
                                     if whisperService.modelState == .loaded {
                                         dismiss()
                                     }
+                                    #endif
                                 }
                             } label: {
                                 HStack {
@@ -601,12 +616,6 @@ struct ModelSettingsSheet: View {
             .toolbar {
                 #if os(iOS)
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .accessibilityIdentifier("settings_done_button")
-                        .disabled(isSwitching)
-                }
-                #else
-                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                         .accessibilityIdentifier("settings_done_button")
                         .disabled(isSwitching)

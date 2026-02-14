@@ -1,7 +1,7 @@
 #!/bin/zsh
 # iOS E2E Test Script - Cycles through all models, captures evidence
 # Usage: ./scripts/ios-e2e-test.sh [--xcuitest] [model_id ...]
-# If no model_ids provided, runs all 11 models.
+# If no model_ids provided, runs all default models.
 # --xcuitest: Use XCUITest runner instead of simctl (captures via XCUIScreenshot)
 
 set -euo pipefail
@@ -36,6 +36,8 @@ ALL_MODELS=(
     "omnilingual-300m"
     "parakeet-tdt-v3"
     "apple-speech"
+    "qwen3-asr-0.6b"
+    "qwen3-asr-0.6b-onnx"
 )
 
 # Parse arguments
@@ -58,6 +60,7 @@ get_wait_time() {
     local model=$1
     case "$model" in
         whisper-large-v3-turbo*) echo 1800 ;;
+        qwen3-asr-0.6b|qwen3-asr-0.6b-onnx) echo 900 ;;
         omnilingual-300m) echo 900 ;;
         whisper-small|parakeet-tdt-v3) echo 300 ;;
         whisper-base) echo 240 ;;
@@ -129,6 +132,8 @@ if [ "$USE_XCUITEST" = true ]; then
         omnilingual-300m test_omnilingual300m
         parakeet-tdt-v3 test_parakeetTdtV3
         apple-speech test_appleSpeech
+        qwen3-asr-0.6b test_qwen3Asr06bCpu
+        qwen3-asr-0.6b-onnx test_qwen3Asr06bOnnx
     )
 
     PASS_COUNT=0
@@ -155,6 +160,7 @@ if [ "$USE_XCUITEST" = true ]; then
         RESULT=$(xcodebuild test \
             -project "$PROJECT_DIR/VoicePingIOSOfflineTranscribe.xcodeproj" \
             -scheme OfflineTranscription \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
             -destination "$DESTINATION_ARG" \
             -only-testing:"OfflineTranscriptionUITests/AllModelsE2ETest/$METHOD" \
             -resultBundlePath "$MODEL_DIR/result.xcresult" \

@@ -25,8 +25,7 @@ let package = Package(
         .target(
             name: "QwenASRKit",
             dependencies: ["QwenASRCLib"],
-            path: "Sources/QwenASRKit",
-            exclude: ["QwenOnnxASR.swift"]
+            path: "Sources/QwenASRKit"
         ),
     ]
 )

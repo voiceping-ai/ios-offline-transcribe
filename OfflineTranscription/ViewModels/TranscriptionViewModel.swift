@@ -10,6 +10,7 @@ final class TranscriptionViewModel {
     var showError: Bool = false
     var errorMessage: String = ""
     var showPermissionDenied: Bool = false
+    var showSpeechRecognitionUnavailable: Bool = false
 
     var isRecording: Bool { whisperService.isRecording }
     var confirmedText: String { whisperService.confirmedText }
@@ -35,14 +36,22 @@ final class TranscriptionViewModel {
 
     private func presentError(_ error: Error) {
         showError = true
+        showPermissionDenied = false
+        showSpeechRecognitionUnavailable = false
         if let appError = error as? AppError {
             if case .microphonePermissionDenied = appError {
                 showPermissionDenied = true
             }
             errorMessage = appError.localizedDescription
+            if Self.isSpeechRecognitionUnavailable(message: errorMessage) {
+                showSpeechRecognitionUnavailable = true
+            }
             return
         }
         errorMessage = error.localizedDescription
+        if Self.isSpeechRecognitionUnavailable(message: errorMessage) {
+            showSpeechRecognitionUnavailable = true
+        }
     }
 
     func toggleRecording() async {
@@ -71,12 +80,18 @@ final class TranscriptionViewModel {
         if let error = whisperService.lastError {
             showError = true
             errorMessage = error.localizedDescription
+            showPermissionDenied = false
+            showSpeechRecognitionUnavailable = Self.isSpeechRecognitionUnavailable(message: errorMessage)
             whisperService.clearLastError()
         }
     }
 
     func openSettings() {
         PermissionManager.openAppSettings()
+    }
+
+    func openSpeechRecognitionSettings() {
+        PermissionManager.openSpeechRecognitionSettings()
     }
 
     var isTranscribingFile: Bool { whisperService.isTranscribingFile }
@@ -92,5 +107,10 @@ final class TranscriptionViewModel {
 
     func transcribeTestFile(_ path: String) {
         whisperService.transcribeTestFile(path)
+    }
+
+    private static func isSpeechRecognitionUnavailable(message: String) -> Bool {
+        message.localizedCaseInsensitiveContains("siri and dictation are disabled")
+            || message.localizedCaseInsensitiveContains("speech recognition unavailable")
     }
 }

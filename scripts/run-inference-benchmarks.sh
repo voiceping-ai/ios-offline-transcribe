@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run end-to-end throughput evaluation for iOS + Android and update README charts/tables.
+# Run end-to-end throughput evaluation for iOS + macOS + Android and update README charts/tables.
 #
 # Usage:
 #   scripts/run-inference-benchmarks.sh
@@ -7,6 +7,7 @@
 # Env:
 #   TARGET_SECONDS (default: 30)  -> length of generated English fixture
 #   RUN_IOS (default: 1)
+#   RUN_MACOS (default: 0)
 #   RUN_ANDROID (default: 1)
 #   IOS_XCUITEST (default: 0)     -> set to 1 to use --xcuitest mode
 
@@ -17,6 +18,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 TARGET_SECONDS="${TARGET_SECONDS:-30}"
 RUN_IOS="${RUN_IOS:-1}"
+RUN_MACOS="${RUN_MACOS:-0}"
 RUN_ANDROID="${RUN_ANDROID:-0}"
 IOS_XCUITEST="${IOS_XCUITEST:-0}"
 
@@ -26,6 +28,7 @@ echo "=== Inference Benchmark Run ==="
 echo "Project:        $PROJECT_DIR"
 echo "Target seconds: $TARGET_SECONDS"
 echo "Run iOS:        $RUN_IOS"
+echo "Run macOS:      $RUN_MACOS"
 echo "Run Android:    $RUN_ANDROID"
 echo "iOS XCUITest:   $IOS_XCUITEST"
 echo ""
@@ -41,6 +44,16 @@ if [ "$RUN_IOS" = "1" ]; then
         EVAL_WAV_PATH="$AUDIO_FIXTURE" "$SCRIPT_DIR/ios-e2e-test.sh" --xcuitest
     else
         EVAL_WAV_PATH="$AUDIO_FIXTURE" "$SCRIPT_DIR/ios-e2e-test.sh"
+    fi
+fi
+
+if [ "$RUN_MACOS" = "1" ]; then
+    echo ""
+    echo "--- Running macOS E2E per-model benchmark ---"
+    if [ -x "$SCRIPT_DIR/macos-e2e-test.sh" ]; then
+        EVAL_WAV_PATH="$AUDIO_FIXTURE" "$SCRIPT_DIR/macos-e2e-test.sh"
+    else
+        echo "Skipping macOS benchmark: scripts/macos-e2e-test.sh not found in this repo."
     fi
 fi
 

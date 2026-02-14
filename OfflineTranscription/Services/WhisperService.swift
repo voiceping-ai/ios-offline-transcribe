@@ -712,9 +712,11 @@ final class WhisperService {
         let engine = EngineFactory.makeEngine(for: selectedModel)
         activeEngine = engine
 
-        modelState = .downloading
         downloadProgress = 0.0
         lastError = nil
+        // Avoid showing "Downloading..." for models that are already cached locally.
+        // Engines will still report .downloading if they end up needing network fetches.
+        modelState = engine.isModelDownloaded(selectedModel) ? .loading : .downloading
 
         // Sync download progress and status from engine in background
         let progressTask = Task { [weak self] in
@@ -794,7 +796,7 @@ final class WhisperService {
         }
     }
 
-    func switchModel(to model: ModelInfo) async {
+    func switchModel(to model: ModelInfo, backendOverride: InferenceBackend? = nil) async {
         if isRecording {
             stopRecording()
         }
@@ -817,7 +819,7 @@ final class WhisperService {
         whisperKit = nil
         modelState = .unloaded
         selectedModelCardId = model.cardId ?? model.id
-        selectedInferenceBackend = model.backend ?? .legacy
+        selectedInferenceBackend = backendOverride ?? model.backend ?? .legacy
         applyBackendResolution(
             cardId: selectedModelCardId,
             requestedBackend: selectedInferenceBackend
@@ -1118,6 +1120,8 @@ final class WhisperService {
         durationMs: Double,
         error: String?
     ) {
+        let safeTokensPerSecond = tokensPerSecond.isFinite ? tokensPerSecond : 0
+        let safeDurationMs = durationMs.isFinite ? durationMs : 0
         let keywords = ["country", "ask", "do for", "fellow", "americans"]
         let lower = transcript.lowercased()
         let normalizedSource = translationSourceLanguageCode.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1154,8 +1158,8 @@ final class WhisperService {
             "expects_translation": expectsTranslation,
             "translation_ready": translationReady,
             "pass": pass,
-            "tokens_per_second": tokensPerSecond,
-            "duration_ms": durationMs,
+            "tokens_per_second": safeTokensPerSecond,
+            "duration_ms": safeDurationMs,
             "timestamp": Self.e2eTimestampFormatter.string(from: Date()),
             "error": error
         ]
@@ -1169,15 +1173,59 @@ final class WhisperService {
                 e2eOverlayPayload = payloadText
             }
             let modelId = selectedModel.id
-            let fileURL = URL(fileURLWithPath: "/tmp/e2e_result_\(modelId).json")
-            try data.write(to: fileURL, options: .atomic)
-            NSLog("[E2E] Result written to \(fileURL.path)")
+            var wroteAny = false
+            var writeErrors: [String] = []
+            for fileURL in Self.e2eResultOutputURLs(modelId: modelId) {
+                do {
+                    let parent = fileURL.deletingLastPathComponent()
+                    try FileManager.default.createDirectory(
+                        at: parent,
+                        withIntermediateDirectories: true
+                    )
+                    try data.write(to: fileURL, options: .atomic)
+                    wroteAny = true
+                    NSLog("[E2E] Result written to \(fileURL.path)")
+                } catch {
+                    writeErrors.append("\(fileURL.path): \(error.localizedDescription)")
+                }
+            }
+            if !wroteAny {
+                throw NSError(
+                    domain: "WhisperService",
+                    code: -7,
+                    userInfo: [NSLocalizedDescriptionKey: writeErrors.joined(separator: " | ")]
+                )
+            }
         } catch {
             e2eOverlayPayload = """
             {"model_id":"\(selectedModel.id)","pass":false,"error":"failed to serialize/write E2E result"}
             """
             NSLog("[E2E] Failed to write result file: \(error)")
         }
+    }
+
+    private static func e2eResultOutputURLs(modelId: String) -> [URL] {
+        let fileName = "e2e_result_\(modelId).json"
+        var urls: [URL] = [
+            URL(fileURLWithPath: "/tmp").appendingPathComponent(fileName)
+        ]
+
+        if let groupURL = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: "group.com.voiceping.transcribe") {
+            urls.append(groupURL.appendingPathComponent(fileName))
+        }
+
+        urls.append(FileManager.default.temporaryDirectory.appendingPathComponent(fileName))
+
+        var deduped: [URL] = []
+        var seen: Set<String> = []
+        for url in urls {
+            let path = url.path
+            if seen.insert(path).inserted {
+                deduped.append(url)
+            }
+        }
+        return deduped
     }
 
     /// Load any audio file and return 16kHz mono Float32 samples in [-1, 1].

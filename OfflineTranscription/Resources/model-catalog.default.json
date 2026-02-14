@@ -174,6 +174,27 @@
           "legacyModelId": "whisper-large-v3-turbo",
           "artifacts": [],
           "isEnabled": true
+        },
+        {
+          "id": "whisper-large-v3-turbo-cactus-v1",
+          "backend": "cactus",
+          "engineType": "cactus",
+          "runtimeLabel": "Cactus · whisper.cpp",
+          "platforms": ["ios", "catalyst"],
+          "architectures": ["arm64"],
+          "minimumOSVersion": "17.0",
+          "legacyModelId": null,
+          "artifacts": [
+            {
+              "id": "model-bin",
+              "relativePath": "ggml-large-v3-turbo-q5_0.bin",
+              "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+              "checksum": "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
+              "checksumAlgorithm": "sha256",
+              "sizeBytes": 574041195
+            }
+          ],
+          "isEnabled": true
         }
       ]
     },
@@ -196,6 +217,27 @@
           "minimumOSVersion": null,
           "legacyModelId": "whisper-large-v3-turbo-compressed",
           "artifacts": [],
+          "isEnabled": true
+        },
+        {
+          "id": "whisper-large-v3-turbo-compressed-cactus-v1",
+          "backend": "cactus",
+          "engineType": "cactus",
+          "runtimeLabel": "Cactus · whisper.cpp",
+          "platforms": ["ios", "catalyst"],
+          "architectures": ["arm64"],
+          "minimumOSVersion": "17.0",
+          "legacyModelId": null,
+          "artifacts": [
+            {
+              "id": "model-bin",
+              "relativePath": "ggml-large-v3-turbo-q8_0.bin",
+              "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q8_0.bin",
+              "checksum": "317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1",
+              "checksumAlgorithm": "sha256",
+              "sizeBytes": 874188075
+            }
+          ],
           "isEnabled": true
         }
       ]
@@ -340,15 +382,38 @@
     },
     {
       "id": "qwen3-asr-0.6b",
-      "displayName": "Qwen3 ASR 0.6B",
+      "displayName": "Qwen3 ASR 0.6B (ONNX)",
       "parameterCount": "600M",
-      "sizeOnDisk": "~1.8 GB",
-      "description": "30 languages. Pure C inference with NEON + Accelerate. ~2.7 GB RAM.",
+      "sizeOnDisk": "~1.6 GB (INT8)",
+      "description": "30 languages. ONNX Runtime INT8 quantized. Cross-platform.",
       "family": "qwenASR",
       "languages": "30 languages",
       "runtimeVariants": [
         {
           "id": "qwen3-asr-0.6b-legacy",
+          "backend": "legacy",
+          "engineType": "qwenOnnx",
+          "runtimeLabel": "QwenASR · ONNX Runtime",
+          "platforms": ["ios", "macOS", "catalyst"],
+          "architectures": [],
+          "minimumOSVersion": null,
+          "legacyModelId": "qwen3-asr-0.6b-onnx",
+          "artifacts": [],
+          "isEnabled": true
+        }
+      ]
+    },
+    {
+      "id": "qwen3-asr-0.6b-cpu",
+      "displayName": "Qwen3 ASR 0.6B (CPU)",
+      "parameterCount": "600M",
+      "sizeOnDisk": "~1.8 GB",
+      "description": "30 languages. Pure C CPU runtime with safetensors weights.",
+      "family": "qwenASR",
+      "languages": "30 languages",
+      "runtimeVariants": [
+        {
+          "id": "qwen3-asr-0.6b-cpu-legacy",
           "backend": "legacy",
           "engineType": "qwenASR",
           "runtimeLabel": "QwenASR · Pure C",

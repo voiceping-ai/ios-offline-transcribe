@@ -249,13 +249,13 @@ struct ModelInfo: Identifiable, Hashable {
             sherpaModelConfig: nil
         ),
 
-        // MARK: - Qwen ASR (pure C inference)
+        // MARK: - Qwen ASR (Pure C, CPU)
         ModelInfo(
             id: "qwen3-asr-0.6b",
             displayName: "Qwen3 ASR 0.6B",
             parameterCount: "600M",
             sizeOnDisk: "~1.8 GB",
-            description: "30 languages. Pure C inference with NEON + Accelerate. ~2.7 GB RAM.",
+            description: "30 languages. Pure C CPU runtime with safetensors weights.",
             family: .qwenASR,
             engineType: .qwenASR,
             languages: "30 languages",
@@ -263,8 +263,15 @@ struct ModelInfo: Identifiable, Hashable {
             sherpaModelConfig: nil,
             qwenModelConfig: QwenModelConfig(
                 repoId: "Qwen/Qwen3-ASR-0.6B",
-                files: ["config.json", "generation_config.json", "model.safetensors", "vocab.json", "merges.txt"]
-            )
+                files: [
+                    "config.json",
+                    "generation_config.json",
+                    "model.safetensors",
+                    "vocab.json",
+                    "merges.txt"
+                ]
+            ),
+            cardId: "qwen3-asr-0.6b-cpu"
         ),
 
         // MARK: - Qwen ASR (MLX, macOS only)
@@ -272,8 +279,8 @@ struct ModelInfo: Identifiable, Hashable {
             id: "qwen3-asr-0.6b-mlx",
             displayName: "Qwen3 ASR 0.6B (MLX)",
             parameterCount: "600M",
-            sizeOnDisk: "~1 GB (8-bit)",
-            description: "30 languages. MLX Metal GPU acceleration on Apple Silicon. 8-bit quantized.",
+            sizeOnDisk: "~400 MB (4-bit)",
+            description: "30 languages. MLX Metal GPU acceleration. macOS Apple Silicon only.",
             family: .qwenASR,
             engineType: .mlx,
             languages: "30 languages",
@@ -304,7 +311,8 @@ struct ModelInfo: Identifiable, Hashable {
                     "config.json",
                     "tokens.json"
                 ]
-            )
+            ),
+            cardId: "qwen3-asr-0.6b"
         ),
     ]
 
@@ -416,6 +424,16 @@ struct ModelInfo: Identifiable, Hashable {
 
     /// Backward-compat: find a model by old-style ID ("tiny" → "whisper-tiny").
     static func findByLegacyId(_ legacyId: String) -> ModelInfo? {
+        if legacyId == "qwen3-asr-0.6b-mlx" {
+            return availableModels.first(where: { $0.id == "qwen3-asr-0.6b-mlx" })
+        }
+        if legacyId == "qwen3-asr-0.6b" {
+            return availableModels.first(where: { $0.id == "qwen3-asr-0.6b-onnx" })
+                ?? availableModels.first(where: { $0.id == "qwen3-asr-0.6b" })
+        }
+        if legacyId == "qwen3-asr-0.6b-cpu" {
+            return availableModels.first(where: { $0.id == "qwen3-asr-0.6b" })
+        }
         if let model = availableModels.first(where: { $0.id == legacyId }) {
             return model
         }

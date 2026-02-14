@@ -10,6 +10,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: SPNP9Y7699
 
 configs:
   Debug: debug
@@ -127,6 +128,9 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: "VoicePing Offline Transcribe"
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "This app needs microphone access to record and transcribe your speech."
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "This app needs speech recognition access to transcribe audio using on-device Apple Speech."
+        # Disable macOS window state restoration to avoid a blocking system modal after crashes
+        # ("Ignore persistent state?") which breaks automation flows.
+        INFOPLIST_KEY_NSQuitAlwaysKeepsWindows: "NO"
     dependencies:
       - package: WhisperKit
         product: WhisperKit

@@ -31,6 +31,19 @@ final class AppleSpeechEngine: ASREngine {
         modelState = .loading
         loadingStatusMessage = "Requesting speech authorization..."
 
+        // TCC will SIGABRT if usage descriptions are missing. Guard so misconfigured builds
+        // fail gracefully instead of hard-crashing the process.
+        let usage = Bundle.main.object(forInfoDictionaryKey: "NSSpeechRecognitionUsageDescription") as? String
+        if usage?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
+            modelState = .error
+            loadingStatusMessage = ""
+            throw AppError.modelLoadFailed(underlying: NSError(
+                domain: "AppleSpeechEngine",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "Missing NSSpeechRecognitionUsageDescription in Info.plist"]
+            ))
+        }
+
         let status = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { status in
                 continuation.resume(returning: status)
@@ -261,7 +274,7 @@ final class AppleSpeechEngine: ASREngine {
 
             recognitionTask = recognizer.recognitionTask(with: request) { result, error in
                 if let error {
-                    resumeOnce(.failure(error))
+                    resumeOnce(.failure(Self.mapRecognitionError(error)))
                     return
                 }
                 guard let result else { return }
@@ -328,5 +341,20 @@ final class AppleSpeechEngine: ASREngine {
             return first.lowercased()
         }
         return normalized.lowercased()
+    }
+
+    private static func mapRecognitionError(_ error: Error) -> Error {
+        let nsError = error as NSError
+        let message = nsError.localizedDescription.lowercased()
+        if message.contains("siri and dictation are disabled") {
+            return NSError(
+                domain: "AppleSpeechEngine",
+                code: -6,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Siri and Dictation are disabled. Enable Dictation in System Settings > Keyboard > Dictation, or switch to an offline model (Qwen ASR / Whisper)."
+                ]
+            )
+        }
+        return error
     }
 }

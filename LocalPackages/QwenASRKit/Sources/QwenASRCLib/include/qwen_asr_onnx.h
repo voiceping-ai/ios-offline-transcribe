@@ -34,4 +34,14 @@ char *qwen_onnx_transcribe(qwen_onnx_ctx_t *ctx, const float *samples, int n_sam
 /* Global verbose flag (shared with qwen_verbose) */
 extern int qwen_onnx_verbose;
 
+/* Get last error message (empty string if no error). */
+const char *qwen_onnx_get_last_error(void);
+
+/* Set a log file path for device diagnostics (stderr not accessible in E2E tests). */
+void qwen_onnx_set_log_file(const char *path);
+
+/* Retrieve timing breakdown from the last transcribe() call (all in milliseconds). */
+void qwen_onnx_get_last_timing(double *mel, double *enc, double *prefill,
+                                double *decode, double *total, int *n_tokens);
+
 #endif /* QWEN_ASR_ONNX_H */

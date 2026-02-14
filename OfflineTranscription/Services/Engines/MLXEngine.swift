@@ -1,5 +1,6 @@
+#if canImport(Qwen3ASR)
 import Foundation
-import MLXKit
+import Qwen3ASR
 
 @MainActor
 final class MLXEngine: ASREngine {
@@ -12,12 +13,13 @@ final class MLXEngine: ASREngine {
     var relativeEnergy: [Float] { recorder.relativeEnergy }
 
     private let recorder = AudioRecorder()
-    private let artifactDownloader = ArtifactDownloader()
-    private var runtime: MLXRuntime?
-    private var currentRequest: ArtifactDownloadRequest?
+    private var model: Qwen3ASRModel?
     private var segmentIdCounter: Int = 0
 
-    func setupModel(_ model: ModelInfo) async throws {
+    /// HuggingFace model ID for the 4-bit quantized 0.6B model (~400 MB).
+    private static let defaultModelId = "mlx-community/Qwen3-ASR-0.6B-4bit"
+
+    func setupModel(_ modelInfo: ModelInfo) async throws {
         guard BackendCapabilities.isBackendSupported(.mlx) else {
             throw AppError.modelLoadFailed(underlying: NSError(
                 domain: "MLXEngine", code: -20,
@@ -25,29 +27,21 @@ final class MLXEngine: ASREngine {
             ))
         }
 
-        guard let request = try await makeDownloadRequest(for: model) else {
-            throw AppError.modelLoadFailed(underlying: NSError(
-                domain: "MLXEngine",
-                code: -21,
-                userInfo: [NSLocalizedDescriptionKey: "Missing MLX runtime metadata for model \(model.id)"]
-            ))
-        }
-
-        currentRequest = request
         modelState = .downloading
-        loadingStatusMessage = "Downloading MLX artifacts..."
-        artifactDownloader.onProgress = { [weak self] value in
-            self?.downloadProgress = value
-        }
-
-        let modelDirectory = try await artifactDownloader.downloadArtifacts(for: request)
-        modelState = .loading
-        loadingStatusMessage = "Loading MLX runtime..."
+        loadingStatusMessage = "Downloading MLX model..."
 
         do {
-            let runtime = MLXRuntime(config: MLXRuntimeConfig(modelDirectory: modelDirectory))
-            try runtime.warmup()
-            self.runtime = runtime
+            let loadedModel = try await Qwen3ASRModel.fromPretrained(
+                modelId: Self.defaultModelId,
+                progressHandler: { [weak self] progress, status in
+                    Task { @MainActor in
+                        self?.downloadProgress = progress
+                        self?.loadingStatusMessage = status
+                    }
+                }
+            )
+
+            self.model = loadedModel
             modelState = .loaded
             downloadProgress = 1
             loadingStatusMessage = ""
@@ -58,29 +52,27 @@ final class MLXEngine: ASREngine {
         }
     }
 
-    func loadModel(_ model: ModelInfo) async throws {
-        guard let request = try await makeDownloadRequest(for: model) else {
-            throw AppError.modelLoadFailed(underlying: NSError(
-                domain: "MLXEngine",
-                code: -22,
-                userInfo: [NSLocalizedDescriptionKey: "Missing MLX runtime metadata for model \(model.id)"]
-            ))
-        }
-
-        guard artifactDownloader.areArtifactsPresent(for: request) else {
+    func loadModel(_ modelInfo: ModelInfo) async throws {
+        guard isModelDownloaded(modelInfo) else {
             modelState = .unloaded
             return
         }
 
-        currentRequest = request
         modelState = .loading
-        loadingStatusMessage = "Loading MLX runtime..."
+        loadingStatusMessage = "Loading MLX model..."
 
         do {
-            let modelDirectory = artifactDownloader.localDirectory(for: request)
-            let runtime = MLXRuntime(config: MLXRuntimeConfig(modelDirectory: modelDirectory))
-            try runtime.warmup()
-            self.runtime = runtime
+            let loadedModel = try await Qwen3ASRModel.fromPretrained(
+                modelId: Self.defaultModelId,
+                progressHandler: { [weak self] progress, status in
+                    Task { @MainActor in
+                        self?.downloadProgress = progress
+                        self?.loadingStatusMessage = status
+                    }
+                }
+            )
+
+            self.model = loadedModel
             modelState = .loaded
             downloadProgress = 1
             loadingStatusMessage = ""
@@ -91,14 +83,20 @@ final class MLXEngine: ASREngine {
         }
     }
 
-    func isModelDownloaded(_ model: ModelInfo) -> Bool {
-        guard let request = currentRequestFor(model) else { return false }
-        return artifactDownloader.areArtifactsPresent(for: request)
+    func isModelDownloaded(_ modelInfo: ModelInfo) -> Bool {
+        let sanitizedId = Self.defaultModelId.replacingOccurrences(of: "/", with: "_")
+        let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("qwen3-speech")
+            .appendingPathComponent(sanitizedId)
+
+        guard FileManager.default.fileExists(atPath: cacheDir.path) else { return false }
+        let contents = (try? FileManager.default.contentsOfDirectory(atPath: cacheDir.path)) ?? []
+        return contents.contains(where: { $0.hasSuffix(".safetensors") })
     }
 
     func unloadModel() async {
         stopRecording()
-        runtime = nil
+        model = nil
         modelState = .unloaded
         downloadProgress = 0
         loadingStatusMessage = ""
@@ -113,14 +111,13 @@ final class MLXEngine: ASREngine {
     }
 
     func transcribe(audioArray: [Float], options: ASRTranscriptionOptions) async throws -> ASRResult {
-        guard let runtime else { throw AppError.modelNotReady }
+        guard let model else { throw AppError.modelNotReady }
 
-        let text: String
-        do {
-            text = try runtime.transcribe(samples: audioArray, language: options.language)
-        } catch {
-            throw AppError.transcriptionFailed(underlying: error)
-        }
+        let text = model.transcribe(
+            audio: audioArray,
+            sampleRate: 16000,
+            language: options.language
+        )
 
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -138,52 +135,53 @@ final class MLXEngine: ASREngine {
 
         return ASRResult(text: trimmed, segments: [segment], language: options.language)
     }
+}
 
-    private func makeDownloadRequest(for model: ModelInfo) async throws -> ArtifactDownloadRequest? {
-        guard let cardId = model.cardId,
-              let runtimeVariantId = model.runtimeVariantId else {
-            return nil
-        }
+#else
+// iOS stub — MLX engine is gated by BackendCapabilities and never instantiated on iOS.
+import Foundation
 
-        let catalog = await ModelCatalogService.shared.loadCatalog()
-        guard let card = catalog.cards.first(where: { $0.id == cardId }),
-              let variant = card.runtimeVariants.first(where: { $0.id == runtimeVariantId }) else {
-            return nil
-        }
+@MainActor
+final class MLXEngine: ASREngine {
+    var isStreaming: Bool { false }
+    private(set) var modelState: ASRModelState = .unloaded
+    private(set) var downloadProgress: Double = 0
+    private(set) var loadingStatusMessage: String = ""
 
-        return ArtifactDownloadRequest(
-            cardId: card.id,
-            backend: variant.backend,
-            version: variant.id,
-            artifacts: variant.artifacts
-        )
+    var audioSamples: [Float] { [] }
+    var relativeEnergy: [Float] { [] }
+
+    func setupModel(_ model: ModelInfo) async throws {
+        throw AppError.modelLoadFailed(underlying: NSError(
+            domain: "MLXEngine", code: -20,
+            userInfo: [NSLocalizedDescriptionKey: "MLX backend is not available on this platform"]
+        ))
     }
 
-    private func currentRequestFor(_ model: ModelInfo) -> ArtifactDownloadRequest? {
-        if let currentRequest,
-           currentRequest.cardId == model.cardId,
-           currentRequest.backend == model.backend {
-            return currentRequest
-        }
+    func loadModel(_ model: ModelInfo) async throws {
+        throw AppError.modelLoadFailed(underlying: NSError(
+            domain: "MLXEngine", code: -20,
+            userInfo: [NSLocalizedDescriptionKey: "MLX backend is not available on this platform"]
+        ))
+    }
 
-        guard let cardId = model.cardId,
-              let backend = model.backend,
-              let runtimeVariantId = model.runtimeVariantId else {
-            return nil
-        }
+    func isModelDownloaded(_ model: ModelInfo) -> Bool { false }
 
-        let catalog = ModelCatalogService.shared.loadLocalFallbackCatalog()
-        guard let card = catalog.cards.first(where: { $0.id == cardId }),
-              let variant = card.runtimeVariants.first(where: { $0.id == runtimeVariantId }),
-              !variant.artifacts.isEmpty else {
-            return nil
-        }
+    func unloadModel() async {
+        modelState = .unloaded
+    }
 
-        return ArtifactDownloadRequest(
-            cardId: card.id,
-            backend: backend,
-            version: runtimeVariantId,
-            artifacts: variant.artifacts
-        )
+    func startRecording(captureMode: AudioCaptureMode) async throws {
+        throw AppError.modelLoadFailed(underlying: NSError(
+            domain: "MLXEngine", code: -20,
+            userInfo: [NSLocalizedDescriptionKey: "MLX backend is not available on this platform"]
+        ))
+    }
+
+    func stopRecording() {}
+
+    func transcribe(audioArray: [Float], options: ASRTranscriptionOptions) async throws -> ASRResult {
+        throw AppError.modelNotReady
     }
 }
+#endif

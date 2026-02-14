@@ -347,7 +347,11 @@ final class SherpaOnnxOfflineEngine: ASREngine {
                           userInfo: [NSLocalizedDescriptionKey: "tokens.txt not found at \(tokensPath)"])
         }
 
-        let numThreads = config.modelType == .omnilingualCtc ? 1 : recommendedOfflineThreads()
+        // Omnilingual is heavy; use a modest thread count to improve throughput without
+        // fully saturating the machine during interactive use.
+        let numThreads = config.modelType == .omnilingualCtc
+            ? max(1, min(recommendedOfflineThreads(), 4))
+            : recommendedOfflineThreads()
         var modelConfig: SherpaOnnxOfflineModelConfig
 
         switch config.modelType {
@@ -424,7 +428,8 @@ final class SherpaOnnxOfflineEngine: ASREngine {
                 numThreads: numThreads,
                 provider: provider,
                 debug: 0,
-                modelingUnit: "bpe",
+                // This MMS CTC model uses character tokens (no separate BPE vocab/model file).
+                modelingUnit: "char",
                 omnilingual: omniConfig
             )
         }

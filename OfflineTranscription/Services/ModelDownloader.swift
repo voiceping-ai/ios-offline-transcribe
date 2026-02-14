@@ -27,8 +27,62 @@ final class ModelDownloader: NSObject, @unchecked Sendable {
 
     /// Directory where model files are stored.
     static var modelsDirectory: URL {
+        #if os(macOS)
+        // Use an App Group container so models persist across (signed) app reinstalls and
+        // remain shared between sandboxed and non-sandboxed debug runs.
+        let appGroupId = "group.com.voiceping.transcribe"
+        let groupRoot = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+            .appendingPathComponent("Library/Group Containers", isDirectory: true)
+        let suffix = "." + appGroupId
+
+        if let groupURL = fileManager.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) {
+            // When running unsigned (or outside the app sandbox), macOS can return an unprefixed
+            // directory (~/Library/Group Containers/group.com.voiceping.transcribe). If a TeamID-
+            // prefixed container exists, prefer it so we reuse the real sandbox container.
+            if groupURL.lastPathComponent == appGroupId,
+               let entries = try? fileManager.contentsOfDirectory(
+                   at: groupRoot,
+                   includingPropertiesForKeys: nil,
+                   options: [.skipsHiddenFiles]
+               ),
+               let match = entries
+                   .filter({ $0.lastPathComponent.hasSuffix(suffix) })
+                   .sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+                   .first {
+                return match.appendingPathComponent("SherpaModels", isDirectory: true)
+            }
+            return groupURL.appendingPathComponent("SherpaModels", isDirectory: true)
+        }
+        // Fallback for unsigned local runs (no entitlements): still prefer the same path.
+        // When the app is signed, macOS typically prefixes the directory with the Team ID
+        // (e.g. "<TEAMID>.group.com.voiceping.transcribe"). Try to reuse it if present.
+        if let entries = try? fileManager.contentsOfDirectory(
+            at: groupRoot,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) {
+            // Prefer the TeamID-prefixed container (e.g. "<TEAMID>.group.com.voiceping.transcribe")
+            // over the bare group id directory, which can be created accidentally by unsigned runs.
+            if let match = entries
+                .filter({ $0.lastPathComponent.hasSuffix(suffix) })
+                .sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+                .first {
+                return match.appendingPathComponent("SherpaModels", isDirectory: true)
+            }
+            if let match = entries
+                .filter({ $0.lastPathComponent == appGroupId })
+                .sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+                .first {
+                return match.appendingPathComponent("SherpaModels", isDirectory: true)
+            }
+        }
+        return groupRoot
+            .appendingPathComponent(appGroupId, isDirectory: true)
+            .appendingPathComponent("SherpaModels", isDirectory: true)
+        #else
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return appSupport.appendingPathComponent("SherpaModels", isDirectory: true)
+        #endif
     }
 
     /// Check if all required model files are already downloaded.
@@ -210,6 +264,22 @@ extension ModelDownloader: URLSessionDownloadDelegate {
         downloadTask: URLSessionDownloadTask,
         didFinishDownloadingTo location: URL
     ) {
+        // Validate HTTP status to avoid caching an auth/error body as a "model file".
+        if let http = downloadTask.response as? HTTPURLResponse,
+           !(200..<300).contains(http.statusCode) {
+            let urlString = downloadTask.originalRequest?.url?.absoluteString ?? "(unknown url)"
+            let snippet: String = (try? String(contentsOf: location, encoding: .utf8))
+                .map { String($0.prefix(200)) } ?? ""
+            let message = "HTTP \(http.statusCode) downloading \(urlString): \(snippet)"
+            session.finishTasksAndInvalidate()
+            resumeContinuation(with: .failure(NSError(
+                domain: "ModelDownloader",
+                code: http.statusCode,
+                userInfo: [NSLocalizedDescriptionKey: message]
+            )))
+            return
+        }
+
         let tempDir = Self.fileManager.temporaryDirectory
         let tempFile = tempDir.appendingPathComponent(UUID().uuidString)
 
