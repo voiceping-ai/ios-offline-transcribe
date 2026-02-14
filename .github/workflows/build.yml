@@ -69,9 +69,30 @@ jobs:
           chmod +x ./scripts/ci-macos-unit-test.sh
           ./scripts/ci-macos-unit-test.sh
 
+      - name: Build macOS app (Release)
+        run: |
+          xcodebuild build \
+            -project VoicePingIOSOfflineTranscribe.xcodeproj \
+            -scheme OfflineTranscriptionMac \
+            -configuration Release \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Create DMG
+        run: |
+          chmod +x ./scripts/create-dmg.sh
+          ./scripts/create-dmg.sh
+
       - name: Upload macOS app artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-app
-          path: build/DerivedData/Build/Products/Debug/OfflineTranscriptionMac.app
+          path: build/DerivedData/Build/Products/Release/OfflineTranscriptionMac.app
+          if-no-files-found: error
+
+      - name: Upload macOS DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: build/VoicePingOfflineTranscribe-*.dmg
           if-no-files-found: error
