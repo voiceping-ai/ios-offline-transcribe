@@ -5,15 +5,91 @@ All inference runs on-device after model download.
 
 ## Screenshots
 
+### iOS (iPad Pro 3rd gen)
+
+| Model Selection | Transcription Result |
+|---|---|
+| <img src="docs/screenshots/ios-home.png" width="300"> | <img src="docs/screenshots/ios-transcription.png" width="300"> |
+
+**File Transcription Demo**
+
+![iOS File Transcription Demo](docs/screenshots/ios-file-transcription-demo.gif)
+
+> SenseVoice Small transcribing a 30s audio file on iPad Pro 3rd gen (A12X), 23.2 tok/s. [Full video (MP4)](docs/screenshots/ios-file-transcription-demo.mp4).
+
+### macOS (MacBook Air M4)
+
 | Model Selection | Transcription Result |
 |---|---|
 | ![Model Selection](docs/screenshots/macos-home.png) | ![Transcription](docs/screenshots/macos-transcription.png) |
 
-### File Transcription Demo
+**File Transcription Demo**
 
 ![File Transcription Demo](docs/screenshots/macos-file-transcription-demo.gif)
 
 > SenseVoice Small transcribing a 30s audio file in ~2 seconds on MacBook Air M4. [Full video (MP4)](docs/screenshots/macos-file-transcription-demo.mp4).
+
+### System Audio Capture (iOS)
+
+The app can transcribe audio from other apps using Apple's ReplayKit Broadcast Upload Extension. Switch between **Voice** (microphone) and **System** (broadcast) modes via the segmented picker above the record button.
+
+<img src="docs/screenshots/ios-system-recording.png" width="400">
+
+**How it works:**
+
+1. User selects **System** mode and taps the record button.
+2. iOS presents the system broadcast picker (RPSystemBroadcastPickerView).
+3. The **Broadcast Upload Extension** (`BroadcastUploadExtension/SampleHandler.swift`) receives `.audioApp` sample buffers from ReplayKit — digital audio from other apps, not microphone input.
+4. The extension converts audio to mono Float32 at 16 kHz and writes it to a **shared memory-mapped ring buffer** (~1.88 MB, 30 s capacity) in the App Group container.
+5. The main app's **SystemAudioSource** polls the ring buffer via Darwin notifications + 50 ms timer, feeding samples to the active ASR engine for transcription.
+6. Stopping: the app sets a `requestStop` flag in shared memory (checked every 200 ms by the extension) + sends a Darwin notification as backup.
+
+> Requires a physical device — ReplayKit broadcast is not supported on the iOS Simulator.
+
+**Implementation:**
+
+```
+┌─────────────────────────┐     ┌───────────────────────────────┐
+│   Broadcast Extension   │     │          Main App             │
+│   (separate process)    │     │                               │
+│                         │     │  ┌─────────────────────────┐  │
+│  ReplayKit .audioApp    │     │  │   SystemAudioSource      │  │
+│  CMSampleBuffers        │     │  │   (ring buffer reader)   │  │
+│         │               │     │  │         │                │  │
+│         ▼               │     │  │         ▼                │  │
+│  Convert to mono        │     │  │   WhisperService         │  │
+│  Float32 @ 16 kHz       │     │  │   effectiveAudioSamples  │  │
+│         │               │     │  │         │                │  │
+│         ▼               │     │  │         ▼                │  │
+│  ┌──────────────┐  ◄──Darwin──►  │   ASR Engine             │  │
+│  │  Ring Buffer  │  notifications │   (any loaded model)    │  │
+│  │  (mmap file)  │───────────►   │         │                │  │
+│  └──────────────┘  shared mem │  │         ▼                │  │
+│                         │     │  │   Transcription text     │  │
+└─────────────────────────┘     │  └─────────────────────────┘  │
+                                └───────────────────────────────┘
+         App Group container: group.com.voiceping.transcribe
+         Ring buffer file:    audio_ring.pcm (~1.88 MB)
+```
+
+| File | Role |
+|---|---|
+| `BroadcastUploadExtension/SampleHandler.swift` | `RPBroadcastSampleHandler` — receives system audio, resamples, writes to ring buffer |
+| `Shared/SharedAudioRingBuffer.swift` | Lock-free single-producer/single-consumer mmap ring buffer (480k samples = 30 s) |
+| `OfflineTranscription/Services/SystemAudioSource.swift` | Reader side — polls ring buffer, computes energy, feeds `onNewAudio` callback |
+| `OfflineTranscription/Views/Components/BroadcastPickerView.swift` | `RPSystemBroadcastPickerView` UIViewRepresentable (hidden, triggered programmatically) |
+
+The ring buffer header layout (20 bytes):
+
+| Offset | Field | Description |
+|---:|---|---|
+| 0–3 | `writeOffset` | Producer write position (UInt32, atomic) |
+| 4–7 | `readOffset` | Consumer read position (UInt32, atomic) |
+| 8–11 | `sampleRate` | Always 16000 |
+| 12–15 | `isActive` | 1 = broadcast running, 0 = stopped |
+| 16–19 | `requestStop` | App sets to 1 to signal extension to stop |
+
+Samples (Float32) start at byte 20. The extension 50 MB memory limit is respected by keeping the buffer small and doing minimal processing (no ASR in the extension).
 
 ## Current Scope (Code-Accurate)
 
