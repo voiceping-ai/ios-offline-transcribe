@@ -11,9 +11,20 @@ final class ModelDownloader: NSObject, @unchecked Sendable {
     nonisolated(unsafe) private var continuation: CheckedContinuation<URL, Error>?
     private let continuationLock = NSLock()
 
-    /// Tracks multi-file download progress.
-    nonisolated(unsafe) private var currentFileIndex: Int = 0
-    nonisolated(unsafe) private var totalFilesToDownload: Int = 1
+    /// Tracks multi-file download progress. Protected by progressLock for
+    /// thread-safe reads from URLSession delegate callbacks.
+    private let progressLock = NSLock()
+    nonisolated(unsafe) private var _currentFileIndex: Int = 0
+    nonisolated(unsafe) private var _totalFilesToDownload: Int = 1
+
+    private nonisolated var currentFileIndex: Int {
+        get { progressLock.withLock { _currentFileIndex } }
+        set { progressLock.withLock { _currentFileIndex = newValue } }
+    }
+    private nonisolated var totalFilesToDownload: Int {
+        get { progressLock.withLock { _totalFilesToDownload } }
+        set { progressLock.withLock { _totalFilesToDownload = newValue } }
+    }
 
     private static let defaultHuggingFaceOrg = "csukuangfj"
     nonisolated(unsafe) private static let fileManager = FileManager.default
@@ -80,7 +91,9 @@ final class ModelDownloader: NSObject, @unchecked Sendable {
             .appendingPathComponent(appGroupId, isDirectory: true)
             .appendingPathComponent("SherpaModels", isDirectory: true)
         #else
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            fatalError("Application Support directory unavailable")
+        }
         return appSupport.appendingPathComponent("SherpaModels", isDirectory: true)
         #endif
     }
@@ -162,7 +175,9 @@ final class ModelDownloader: NSObject, @unchecked Sendable {
         for (index, filename) in filesToDownload.enumerated() {
             currentFileIndex = index
 
-            let url = URL(string: "https://huggingface.co/\(repoPath)/resolve/main/\(filename)")!
+            guard let url = URL(string: "https://huggingface.co/\(repoPath)/resolve/main/\(filename)") else {
+                throw URLError(.badURL, userInfo: [NSLocalizedDescriptionKey: "Invalid HuggingFace URL for \(repoPath)/\(filename)"])
+            }
             let tempFile = try await downloadFile(from: url)
 
             let destPath = modelDir.appendingPathComponent(filename)
@@ -201,11 +216,13 @@ final class ModelDownloader: NSObject, @unchecked Sendable {
     func cancelDownload() {
         downloadTask?.cancel()
         downloadTask = nil
+
+        // Resume continuation BEFORE invalidating session, so that
+        // delegate callbacks from invalidation don't race with the caller.
+        resumeContinuation(with: .failure(CancellationError()))
+
         session?.invalidateAndCancel()
         session = nil
-
-        // Resume any waiting continuation so the caller doesn't hang
-        resumeContinuation(with: .failure(CancellationError()))
     }
 
     deinit {
@@ -214,14 +231,17 @@ final class ModelDownloader: NSObject, @unchecked Sendable {
 
     // MARK: - Private
 
-    private static func fileURL(repo: String, filename: String) -> URL {
+    private static func fileURL(repo: String, filename: String) throws -> URL {
         let repoPath: String
         if repo.contains("/") {
             repoPath = repo
         } else {
             repoPath = "\(defaultHuggingFaceOrg)/\(repo)"
         }
-        return URL(string: "https://huggingface.co/\(repoPath)/resolve/main/\(filename)")!
+        guard let url = URL(string: "https://huggingface.co/\(repoPath)/resolve/main/\(filename)") else {
+            throw URLError(.badURL, userInfo: [NSLocalizedDescriptionKey: "Invalid HuggingFace URL for \(repoPath)/\(filename)"])
+        }
+        return url
     }
 
     private func downloadFile(from url: URL) async throws -> URL {

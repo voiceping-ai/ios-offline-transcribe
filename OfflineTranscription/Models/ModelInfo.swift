@@ -324,7 +324,13 @@ struct ModelInfo: Identifiable, Hashable {
         ),
     ]
 
-    static let defaultModel = availableModels.first { $0.id == "whisper-base" }!
+    static let defaultModel: ModelInfo = {
+        if let model = availableModels.first(where: { $0.id == "whisper-base" }) {
+            return model
+        }
+        NSLog("[ModelInfo] WARNING: whisper-base not found in catalog, falling back to first model")
+        return availableModels[0]
+    }()
     private static let familyDisplayOrder: [ModelFamily] = [
         .senseVoice,
         .whisper,

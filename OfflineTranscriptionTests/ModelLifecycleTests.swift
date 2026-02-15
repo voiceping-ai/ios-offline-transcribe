@@ -80,6 +80,13 @@ final class ModelLifecycleTests: XCTestCase {
         XCTAssertEqual(ModelInfo.defaultModel.displayName, "Whisper Base")
     }
 
+    func testDefaultModelExistsInCatalog() {
+        XCTAssertTrue(
+            ModelInfo.availableModels.contains(where: { $0.id == "whisper-base" }),
+            "whisper-base must exist in catalog for defaultModel to resolve correctly"
+        )
+    }
+
     func testModelDisplayNames() {
         let names = ModelInfo.availableModels.map(\.displayName)
         XCTAssertTrue(names.contains("Whisper Tiny"))
