@@ -113,7 +113,14 @@ Defined in `OfflineTranscription/Models/ModelInfo.swift` and `OfflineTranscripti
 
 ### iOS Benchmark (iPad Pro 3rd gen, A12X Bionic)
 
-4 GB RAM. 30s English speech (16kHz mono WAV). Sorted by tok/s.
+4 GB RAM. Sorted by tok/s.
+
+**Test audio**: 30-second WAV (16 kHz, mono, PCM 16-bit) of JFK's 1961 inaugural address, looped from an 11-second clip to reach the target duration.
+
+**Metrics**:
+- **tok/s** — output words per second of inference time (`total_words / elapsed_seconds`). Higher is faster.
+- **RTF** — Real Time Factor (`inference_time / audio_duration`). Values below 1.0 mean faster than real-time.
+- Inference time is wall-clock time for `engine.transcribe()` only — excludes model download and load.
 
 ![iOS Inference Speed](docs/ios_tokens_per_second.svg)
 
@@ -139,11 +146,10 @@ Defined in `OfflineTranscription/Models/ModelInfo.swift` and `OfflineTranscripti
 
 > † whisper-base (WhisperKit) uses `.en` English-only variant due to multilingual CoreML conversion issues.
 > ‡ WhisperKit E2E FAIL on 4 GB iPad — CoreML compilation OOM. Timing is from cached (pre-compiled) CoreML runs; first run adds 30-120s compilation.
-> RTF = inference time / audio duration; < 1.0 = faster than real-time.
 
 ### macOS Benchmark (MacBook Air M4)
 
-32 GB RAM. Low Power Mode on during benchmark. 30s English speech (16kHz mono WAV). Sorted by tok/s.
+32 GB RAM. Low Power Mode on during benchmark. Same 30-second JFK test audio as above. Sorted by tok/s.
 
 ![macOS Inference Speed](docs/macos_tokens_per_second.svg)
 
@@ -166,6 +172,8 @@ Defined in `OfflineTranscription/Models/ModelInfo.swift` and `OfflineTranscripti
 | [`omnilingual-300m`](https://huggingface.co/facebook/mms-1b-all) | sherpa-onnx offline | 300M | ~365 MB | 1,600+ languages | 0.03 | FAIL — English output broken |
 
 > † whisper-base (WhisperKit) uses `.en` English-only variant due to multilingual CoreML conversion issues.
+
+> **Want to see a new model benchmarked?** If there is an offline ASR model you would like added or benchmarked on a specific device, please [open an issue](https://github.com/voiceping-ai/ios-mac-offline-transcribe/issues/new) with the model name and target hardware. Community contributions of benchmark results on different devices are also welcome.
 
 ### Model Origins
 
