@@ -1,5 +1,7 @@
 # iOS + macOS Offline Transcribe
 
+[![Build](https://github.com/voiceping-ai/ios-mac-offline-transcribe/actions/workflows/build.yml/badge.svg)](https://github.com/voiceping-ai/ios-mac-offline-transcribe/actions/workflows/build.yml)
+
 Offline-first iOS and macOS transcription app focused on local speech recognition.
 All inference runs on-device after model download.
 
@@ -124,25 +126,25 @@ Defined in `OfflineTranscription/Models/ModelInfo.swift` and `OfflineTranscripti
 
 ![iOS Inference Speed](docs/ios_tokens_per_second.svg)
 
-| Model ID | Engine | Params | Disk | Languages | tok/s | Notes |
+| Model ID | Engine | Params | Disk | Languages | tok/s | Status |
 |---|---|---:|---:|---|---:|---|
-| [`parakeet-tdt-v3`](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) | FluidAudio (CoreML) | 600M | ~600 MB | 25 European | 181.8 | |
-| [`zipformer-20m`](https://github.com/k2-fsa/icefall) | sherpa-onnx streaming | 20M | ~46 MB | English | 39.7 | |
-| [`whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | whisper.cpp | 39M | 32 MB | 99 languages | 37.8 | |
-| [`moonshine-tiny`](https://huggingface.co/usefulsensors/moonshine-tiny) | sherpa-onnx offline | 27M | ~125 MB | English | 37.3 | |
-| [`moonshine-base`](https://huggingface.co/usefulsensors/moonshine-base) | sherpa-onnx offline | 61M | ~280 MB | English | 31.3 | |
-| [`whisper-base`](https://huggingface.co/openai/whisper-base) | WhisperKit (CoreML) | 74M | ~150 MB | English† | 19.6 | FAIL on 4 GB‡ |
-| [`sensevoice-small`](https://huggingface.co/FunAudioLLM/SenseVoiceSmall) | sherpa-onnx offline | 234M | ~240 MB | zh/en/ja/ko/yue | 15.6 | |
-| [`whisper-base`](https://huggingface.co/openai/whisper-base) | whisper.cpp | 74M | 60 MB | 99 languages | 13.8 | |
-| [`whisper-small`](https://huggingface.co/openai/whisper-small) | WhisperKit (CoreML) | 244M | ~500 MB | 99 languages | 6.3 | FAIL on 4 GB‡ |
-| [`qwen3-asr-0.6b`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | Pure C (ARM NEON) | 600M | ~1.8 GB | 30 languages | 5.6 | |
-| [`qwen3-asr-0.6b-onnx`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | ONNX Runtime (INT8) | 600M | ~1.6 GB | 30 languages | 5.4 | |
-| [`whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | WhisperKit (CoreML) | 39M | ~80 MB | 99 languages | 4.5 | |
-| [`whisper-small`](https://huggingface.co/openai/whisper-small) | whisper.cpp | 244M | 190 MB | 99 languages | 3.9 | |
-| [`whisper-large-v3-turbo-compressed`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | ~1 GB | 99 languages | 1.9 | FAIL on 4 GB‡ |
-| [`whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | ~600 MB | 99 languages | 1.4 | FAIL on 4 GB‡ |
-| [`whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | whisper.cpp | 809M | 574 MB | 99 languages | 0.8 | RTF >1 (slower than real-time) |
-| [`whisper-large-v3-turbo-compressed`](https://huggingface.co/openai/whisper-large-v3-turbo) | whisper.cpp | 809M | 874 MB | 99 languages | 0.8 | RTF >1 (slower than real-time) |
+| [`parakeet-tdt-v3`](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) | FluidAudio (CoreML) | 600M | 600 MB | 25 European | 181.8 | ✅ |
+| [`zipformer-20m`](https://github.com/k2-fsa/icefall) | sherpa-onnx streaming | 20M | 46 MB | English | 39.7 | ✅ |
+| [`whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | whisper.cpp | 39M | 31 MB | 99 languages | 37.8 | ✅ |
+| [`moonshine-tiny`](https://huggingface.co/usefulsensors/moonshine-tiny) | sherpa-onnx offline | 27M | 125 MB | English | 37.3 | ✅ |
+| [`moonshine-base`](https://huggingface.co/usefulsensors/moonshine-base) | sherpa-onnx offline | 61M | 280 MB | English | 31.3 | ✅ |
+| [`whisper-base`](https://huggingface.co/openai/whisper-base) | WhisperKit (CoreML) | 74M | 150 MB | English† | 19.6 | ❌ OOM on 4 GB‡ |
+| [`sensevoice-small`](https://huggingface.co/FunAudioLLM/SenseVoiceSmall) | sherpa-onnx offline | 234M | 240 MB | zh/en/ja/ko/yue | 15.6 | ✅ |
+| [`whisper-base`](https://huggingface.co/openai/whisper-base) | whisper.cpp | 74M | 57 MB | 99 languages | 13.8 | ✅ |
+| [`whisper-small`](https://huggingface.co/openai/whisper-small) | WhisperKit (CoreML) | 244M | 500 MB | 99 languages | 6.3 | ❌ OOM on 4 GB‡ |
+| [`qwen3-asr-0.6b`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | Pure C (ARM NEON) | 600M | 1.8 GB | 30 languages | 5.6 | ✅ |
+| [`qwen3-asr-0.6b-onnx`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | ONNX Runtime (INT8) | 600M | 1.6 GB | 30 languages | 5.4 | ✅ |
+| [`whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | WhisperKit (CoreML) | 39M | 80 MB | 99 languages | 4.5 | ✅ |
+| [`whisper-small`](https://huggingface.co/openai/whisper-small) | whisper.cpp | 244M | 181 MB | 99 languages | 3.9 | ✅ |
+| [`whisper-large-v3-turbo-compressed`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | 1 GB | 99 languages | 1.9 | ❌ OOM on 4 GB‡ |
+| [`whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | 600 MB | 99 languages | 1.4 | ❌ OOM on 4 GB‡ |
+| [`whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | whisper.cpp | 809M | 547 MB | 99 languages | 0.8 | ⚠️ RTF >1 |
+| [`whisper-large-v3-turbo-compressed`](https://huggingface.co/openai/whisper-large-v3-turbo) | whisper.cpp | 809M | 834 MB | 99 languages | 0.8 | ⚠️ RTF >1 |
 
 > † whisper-base (WhisperKit) uses `.en` English-only variant due to multilingual CoreML conversion issues.
 > ‡ WhisperKit E2E FAIL on 4 GB iPad — CoreML compilation OOM. Timing is from cached (pre-compiled) CoreML runs; first run adds 30-120s compilation.
@@ -153,23 +155,23 @@ Defined in `OfflineTranscription/Models/ModelInfo.swift` and `OfflineTranscripti
 
 ![macOS Inference Speed](docs/macos_tokens_per_second.svg)
 
-| Model ID | Engine | Params | Disk | Languages | tok/s | Notes |
+| Model ID | Engine | Params | Disk | Languages | tok/s | Status |
 |---|---|---:|---:|---|---:|---|
-| [`parakeet-tdt-v3`](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) | FluidAudio (CoreML) | 600M | ~600 MB | 25 European | 171.6 | |
-| [`moonshine-tiny`](https://huggingface.co/usefulsensors/moonshine-tiny) | sherpa-onnx offline | 27M | ~125 MB | English | 92.2 | |
-| [`zipformer-20m`](https://github.com/k2-fsa/icefall) | sherpa-onnx streaming | 20M | ~46 MB | English | 77.4 | |
-| [`moonshine-base`](https://huggingface.co/usefulsensors/moonshine-base) | sherpa-onnx offline | 61M | ~280 MB | English | 59.3 | |
-| [`sensevoice-small`](https://huggingface.co/FunAudioLLM/SenseVoiceSmall) | sherpa-onnx offline | 234M | ~240 MB | zh/en/ja/ko/yue | 27.4 | |
-| [`whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | WhisperKit (CoreML) | 39M | ~80 MB | 99 languages | 24.7 | |
-| [`whisper-base`](https://huggingface.co/openai/whisper-base) | WhisperKit (CoreML) | 74M | ~150 MB | English† | 23.3 | |
-| [`apple-speech`](https://developer.apple.com/documentation/speech/sfspeechrecognizer) | SFSpeechRecognizer | System | Built-in | 50+ languages | 13.1 | Requires Dictation enabled |
-| [`whisper-small`](https://huggingface.co/openai/whisper-small) | WhisperKit (CoreML) | 244M | ~500 MB | 99 languages | 8.7 | |
-| [`qwen3-asr-0.6b-onnx`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | ONNX Runtime (INT8) | 600M | ~1.6 GB | 30 languages | 8.0 | |
-| [`qwen3-asr-0.6b`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | Pure C (ARM NEON) | 600M | ~1.8 GB | 30 languages | 5.7 | |
-| [`whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | ~600 MB | 99 languages | 1.9 | |
-| [`whisper-large-v3-turbo-compressed`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | ~1 GB | 99 languages | 1.5 | |
-| [`qwen3-asr-0.6b-mlx`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | MLX (Metal GPU) | 600M | ~400 MB | 30 languages | — | Not yet benchmarked |
-| [`omnilingual-300m`](https://huggingface.co/facebook/mms-1b-all) | sherpa-onnx offline | 300M | ~365 MB | 1,600+ languages | 0.03 | FAIL — English output broken |
+| [`parakeet-tdt-v3`](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) | FluidAudio (CoreML) | 600M | 600 MB | 25 European | 171.6 | ✅ |
+| [`moonshine-tiny`](https://huggingface.co/usefulsensors/moonshine-tiny) | sherpa-onnx offline | 27M | 125 MB | English | 92.2 | ✅ |
+| [`zipformer-20m`](https://github.com/k2-fsa/icefall) | sherpa-onnx streaming | 20M | 46 MB | English | 77.4 | ✅ |
+| [`moonshine-base`](https://huggingface.co/usefulsensors/moonshine-base) | sherpa-onnx offline | 61M | 280 MB | English | 59.3 | ✅ |
+| [`sensevoice-small`](https://huggingface.co/FunAudioLLM/SenseVoiceSmall) | sherpa-onnx offline | 234M | 240 MB | zh/en/ja/ko/yue | 27.4 | ✅ |
+| [`whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | WhisperKit (CoreML) | 39M | 80 MB | 99 languages | 24.7 | ✅ |
+| [`whisper-base`](https://huggingface.co/openai/whisper-base) | WhisperKit (CoreML) | 74M | 150 MB | English† | 23.3 | ✅ |
+| [`apple-speech`](https://developer.apple.com/documentation/speech/sfspeechrecognizer) | SFSpeechRecognizer | System | Built-in | 50+ languages | 13.1 | ✅ |
+| [`whisper-small`](https://huggingface.co/openai/whisper-small) | WhisperKit (CoreML) | 244M | 500 MB | 99 languages | 8.7 | ✅ |
+| [`qwen3-asr-0.6b-onnx`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | ONNX Runtime (INT8) | 600M | 1.6 GB | 30 languages | 8.0 | ✅ |
+| [`qwen3-asr-0.6b`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | Pure C (ARM NEON) | 600M | 1.8 GB | 30 languages | 5.7 | ✅ |
+| [`whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | 600 MB | 99 languages | 1.9 | ✅ |
+| [`whisper-large-v3-turbo-compressed`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | 1 GB | 99 languages | 1.5 | ✅ |
+| [`qwen3-asr-0.6b-mlx`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | MLX (Metal GPU) | 600M | 400 MB | 30 languages | — | 🆕 Not benchmarked |
+| [`omnilingual-300m`](https://huggingface.co/facebook/mms-1b-all) | sherpa-onnx offline | 300M | 365 MB | 1,600+ languages | 0.03 | ❌ English broken |
 
 > † whisper-base (WhisperKit) uses `.en` English-only variant due to multilingual CoreML conversion issues.
 
@@ -202,9 +204,9 @@ whisper.cpp uses GGML quantized models (Q5_0/Q5_1/Q8_0) with no CoreML compilati
 
 ## Architecture
 
-- Orchestrator: `OfflineTranscription/Services/WhisperService.swift`
+- Orchestrator: `OfflineTranscription/Services/WhisperService.swift` + `TranscriptionCoordinator.swift` (inference loop, VAD, chunking)
 - Engines (9 total):
-  - `WhisperCppEngine` — Whisper family via [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (CPU + Metal GPU, GGML quantized)
+  - `CactusEngine` — Whisper family via [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (CPU + Metal GPU, GGML quantized)
   - `WhisperKitEngine` — Whisper family via [WhisperKit](https://github.com/argmaxinc/WhisperKit) CoreML (ANE + GPU)
   - `SherpaOnnxOfflineEngine` — Moonshine, SenseVoice, Omnilingual via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) ONNX Runtime
   - `SherpaOnnxStreamingEngine` — Zipformer via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) ONNX Runtime (100 ms chunks)
@@ -213,6 +215,7 @@ whisper.cpp uses GGML quantized models (Q5_0/Q5_1/Q8_0) with no CoreML compilati
   - `QwenASREngine` — [Qwen3 ASR 0.6B](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) via [antirez/qwen-asr](https://github.com/antirez/qwen-asr) pure C (ARM NEON, 6 threads)
   - `QwenOnnxEngine` — [Qwen3 ASR 0.6B INT8](https://huggingface.co/jima/qwen3-asr-0.6b-onnx-int8) via ONNX Runtime
   - `MLXEngine` — [Qwen3 ASR 0.6B 4-bit](https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-4bit) via [MLX](https://github.com/ml-explore/mlx-swift) Metal GPU (macOS Apple Silicon only)
+- Supporting services: `ModelCatalogService`, `ModelDownloader`, `EngineFactory`, `BackendResolver`, `SystemMetrics`
 - Backend selection: `BackendResolver` with automatic fallback (iOS: whisper.cpp → legacy; macOS: mlx → legacy)
 - Audio capture: `OfflineTranscription/Services/AudioRecorder.swift`
 - System capture:
@@ -250,7 +253,7 @@ scripts/generate-ios-project.sh
 ```bash
 xcodebuild -project VoicePingIOSOfflineTranscribe.xcodeproj \
   -scheme OfflineTranscription \
-  -destination 'generic/platform=iOS Simulator' build
+  -destination 'generic/platform=iOS' build
 ```
 
 ## macOS App
