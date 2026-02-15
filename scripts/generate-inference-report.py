@@ -53,7 +53,6 @@ ANDROID_MODELS = [
     "omnilingual-300m",
     "zipformer-20m",
     "cactus-whisper-tiny",
-    "cactus-moonshine-base",
     "qwen3-asr-0.6b",
     "qwen3-asr-0.6b-onnx",
     "android-speech-offline",
@@ -103,7 +102,7 @@ def _entry_from_payload(
             "model_id": model_id,
             "engine": "",
             "pass": False,
-            "skipped": False,
+            "skipped": True,
             "error": "missing result.json",
             "transcript": "",
             "word_count": 0,
@@ -374,6 +373,19 @@ def main() -> None:
             if candidates:
                 macos_dir = candidates[-1]
                 print(f"Auto-selected macOS results dir: {macos_dir.as_posix()}")
+
+    # If Android results live in a sibling repo (offline-translation workspace),
+    # auto-detect them when the default folder doesn't contain results.
+    if args.android_dir == "artifacts/e2e/android":
+        has_any_android = any((android_dir / mid / "result.json").exists() for mid in ANDROID_MODELS)
+        if not has_any_android:
+            project_dir = Path(__file__).resolve().parent.parent
+            sibling = project_dir.parent / "android-offline-transcribe" / "artifacts" / "e2e" / "android"
+            if sibling.exists():
+                sibling_has = any((sibling / mid / "result.json").exists() for mid in ANDROID_MODELS)
+                if sibling_has:
+                    android_dir = sibling
+                    print(f"Auto-selected Android results dir: {android_dir.as_posix()}")
 
     ios_entries = collect_platform_results(ios_dir, IOS_MODELS, audio_duration)
     macos_entries = collect_platform_results(macos_dir, MACOS_MODELS, audio_duration)

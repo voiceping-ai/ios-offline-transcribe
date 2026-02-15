@@ -79,7 +79,15 @@ struct ModelInfo: Identifiable, Hashable {
             family: .whisper,
             engineType: .whisperKit,
             languages: "English",
-            variant: "openai_whisper-base.en",
+            // NOTE: WhisperKit's english-only base model can return empty output on the iOS simulator.
+            // Use the multilingual variant on simulator for correctness; keep the smaller .en variant on device/macOS.
+            variant: {
+                #if targetEnvironment(simulator)
+                return "openai_whisper-base"
+                #else
+                return "openai_whisper-base.en"
+                #endif
+            }(),
             sherpaModelConfig: nil
         ),
         ModelInfo(

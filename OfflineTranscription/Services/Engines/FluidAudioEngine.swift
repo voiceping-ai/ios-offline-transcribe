@@ -68,6 +68,10 @@ final class FluidAudioEngine: ASREngine {
 
     // MARK: - ASREngine
 
+    /// Total time budget for download + CoreML compilation + initialization.
+    /// First-run CoreML compilation can take 60-120s on older devices.
+    private static let setupTimeoutSeconds: TimeInterval = 300
+
     func setupModel(_ model: ModelInfo) async throws {
         guard Self.isDeviceSupported else {
             modelState = .error
@@ -80,18 +84,44 @@ final class FluidAudioEngine: ASREngine {
         modelState = .downloading
         downloadProgress = 0.5 // FluidAudio manages its own download; show indeterminate progress
 
-        do {
-            let models = try await AsrModels.downloadAndLoad(version: .v3)
-            modelState = .downloaded
-            downloadProgress = 1.0
-            UserDefaults.standard.set(true, forKey: Self.downloadedKey)
+        // Wrap setup in a timeout to prevent indefinite CoreML compilation hangs.
+        let result: Result<AsrManager, Error> = await withTaskGroup(of: Result<AsrManager, Error>?.self) { group in
+            group.addTask { [weak self] in
+                do {
+                    let models = try await AsrModels.downloadAndLoad(version: .v3)
+                    await MainActor.run {
+                        self?.modelState = .downloaded
+                        self?.downloadProgress = 1.0
+                        UserDefaults.standard.set(true, forKey: Self.downloadedKey)
+                        self?.modelState = .loading
+                    }
+                    let manager = AsrManager(config: .default)
+                    try await manager.initialize(models: models)
+                    return .success(manager)
+                } catch {
+                    return .failure(error)
+                }
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(Self.setupTimeoutSeconds))
+                return nil // sentinel for timeout
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            if let first {
+                return first
+            }
+            return .failure(NSError(
+                domain: "FluidAudioEngine", code: -11,
+                userInfo: [NSLocalizedDescriptionKey: "FluidAudio setup timed out after \(Int(Self.setupTimeoutSeconds))s (CoreML compilation may have stalled)"]
+            ))
+        }
 
-            modelState = .loading
-            let manager = AsrManager(config: .default)
-            try await manager.initialize(models: models)
+        switch result {
+        case .success(let manager):
             self.asrManager = manager
             modelState = .loaded
-        } catch {
+        case .failure(let error):
             modelState = .error
             throw AppError.modelLoadFailed(underlying: error)
         }

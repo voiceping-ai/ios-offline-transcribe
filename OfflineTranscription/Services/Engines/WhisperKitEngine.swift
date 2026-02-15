@@ -229,12 +229,28 @@ final class WhisperKitEngine: ASREngine {
         guard let whisperKit else { throw AppError.modelNotReady }
         let logger = InferenceLogger.shared
 
+        let normalizedVariant = (currentModelVariant ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let isEnglishOnlyVariant = normalizedVariant.hasSuffix(".en")
+        let isWhisperBaseVariant = normalizedVariant.contains("whisper-base")
+        let normalizedLanguage = options.language?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let effectiveLanguage: String? = {
+            if let normalizedLanguage, !normalizedLanguage.isEmpty {
+                return normalizedLanguage
+            }
+            // The "whisper-base" preset is English-only in our app (and uses an english-only model on device/macOS).
+            // Force English to avoid language-autodetect quirks and repetition loops during decoding.
+            if isEnglishOnlyVariant || isWhisperBaseVariant {
+                return "en"
+            }
+            return nil
+        }()
+
         // Keep worker fan-out conservative on older iPads to avoid decode stalls.
         let workerCount = min(2, max(1, ProcessInfo.processInfo.activeProcessorCount))
         let decodingOptions = DecodingOptions(
             verbose: false,
             task: .transcribe,
-            language: options.language,
+            language: effectiveLanguage,
             temperature: options.temperature,
             temperatureFallbackCount: 3,
             usePrefillPrompt: true,
@@ -264,7 +280,6 @@ final class WhisperKitEngine: ASREngine {
         }
 
         let primaryScore = transcriptionQualityScore(primary.text)
-        let isWhisperBaseVariant = (currentModelVariant ?? "").contains("whisper-base")
         // Only pay the chunked cost when primary output is empty or suspicious.
         let shouldRunChunkedFallback = isWhisperBaseVariant || primary.text.isEmpty || primaryScore < 140
         if !shouldRunChunkedFallback {

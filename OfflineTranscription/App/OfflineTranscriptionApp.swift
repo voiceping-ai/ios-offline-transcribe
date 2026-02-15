@@ -5,6 +5,29 @@ import UIKit
 import AppKit
 #endif
 
+enum AutoTestAudioPath {
+    static func resolve() -> String {
+        let env = ProcessInfo.processInfo.environment["EVAL_WAV_PATH"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let env, !env.isEmpty {
+            return env
+        }
+
+        let fm = FileManager.default
+        for p in ["/private/tmp/test_speech.wav", "/tmp/test_speech.wav"] {
+            if fm.fileExists(atPath: p) {
+                return p
+            }
+        }
+
+        if let bundled = Bundle.main.path(forResource: "test_speech", ofType: "wav") {
+            return bundled
+        }
+
+        return "/tmp/test_speech.wav"
+    }
+}
+
 #if os(macOS)
 /// Avoid macOS state-restoration crash prompts during automation runs.
 /// AppKit may show a blocking modal ("Ignore persistent state?") after a crash.
@@ -155,11 +178,7 @@ struct OfflineTranscriptionApp: App {
         }
 
         // Trigger file transcription on the service directly (no dependency on a visible window).
-        let envWavPath = ProcessInfo.processInfo.environment["EVAL_WAV_PATH"]
-        let wavPath = (envWavPath?.isEmpty == false ? envWavPath : nil)
-            ?? Bundle.main.path(forResource: "test_speech", ofType: "wav")
-            ?? "/tmp/test_speech.wav"
-        service.transcribeTestFile(wavPath)
+        service.transcribeTestFile(AutoTestAudioPath.resolve())
 
         let deadline = Date().addingTimeInterval(transcribeTimeoutSeconds(for: selectedModelId))
         while service.e2eOverlayPayload.isEmpty && Date() < deadline {
@@ -231,37 +250,72 @@ struct RootView: View {
     }
 
     var body: some View {
-        Group {
-            switch whisperService.modelState {
-            case .loaded:
-                TranscriptionRootView()
-            case .loading, .downloading, .downloaded:
-                VStack(spacing: 8) {
-                    ProgressView(whisperService.modelState == .downloading
-                        ? "Downloading model..." : "Loading model...")
-                    if whisperService.modelState == .downloading {
-                        Text("\(Int(whisperService.downloadProgress * 100))%")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if !whisperService.loadingStatusMessage.isEmpty {
-                        Text(whisperService.loadingStatusMessage)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    AppVersionLabel()
-                }
-            default:
-                // Only keep TranscriptionRootView if a model was previously loaded
-                // (e.g. during model switch). Prevents navigating to transcription
-                // when download/load failed and no model is ready.
-                if whisperService.activeEngine?.modelState == .loaded {
+        ZStack {
+            Group {
+                switch whisperService.modelState {
+                case .loaded:
                     TranscriptionRootView()
-                } else {
-                    ModelSetupView()
+                case .loading, .downloading, .downloaded:
+                    VStack(spacing: 8) {
+                        ProgressView(whisperService.modelState == .downloading
+                            ? "Downloading model..." : "Loading model...")
+                        if whisperService.modelState == .downloading {
+                            Text("\(Int(whisperService.downloadProgress * 100))%")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if !whisperService.loadingStatusMessage.isEmpty {
+                            Text(whisperService.loadingStatusMessage)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        AppVersionLabel()
+                    }
+                default:
+                    // Only keep TranscriptionRootView if a model was previously loaded
+                    // (e.g. during model switch). Prevents navigating to transcription
+                    // when download/load failed and no model is ready.
+                    if whisperService.activeEngine?.modelState == .loaded {
+                        TranscriptionRootView()
+                    } else {
+                        ModelSetupView()
+                    }
                 }
             }
+
+            // Surface E2E result overlay even when model fails to load (e.g. Apple Speech
+            // with Dictation disabled). Without this, the XCUITest can't see the result
+            // because TranscriptionView is never shown.
+            #if DEBUG
+            if Self.isAutoTestRun, !whisperService.e2eOverlayPayload.isEmpty,
+               whisperService.modelState != .loaded {
+                VStack {
+                    HStack {
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text("E2E Result Ready")
+                                .font(.caption2)
+                                .fontWeight(.semibold)
+                            Text(whisperService.e2eOverlayPayload)
+                                .font(.caption2.monospaced())
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .accessibilityIdentifier("e2e_overlay_payload")
+                        }
+                        .padding(8)
+                        .background(.black.opacity(0.72))
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .padding(8)
+                        .accessibilityIdentifier("e2e_overlay")
+                        .accessibilityLabel("e2e_overlay")
+                        .accessibilityValue(whisperService.e2eOverlayPayload)
+                    }
+                    Spacer()
+                }
+            }
+            #endif
         }
         .task {
             #if os(macOS)
@@ -329,11 +383,7 @@ struct RootView: View {
                 }
 
                 // Trigger file transcription on the service directly (no dependency on TranscriptionView.task).
-                let envWavPath = ProcessInfo.processInfo.environment["EVAL_WAV_PATH"]
-                let wavPath = (envWavPath?.isEmpty == false ? envWavPath : nil)
-                    ?? Bundle.main.path(forResource: "test_speech", ofType: "wav")
-                    ?? "/tmp/test_speech.wav"
-                whisperService.transcribeTestFile(wavPath)
+                whisperService.transcribeTestFile(AutoTestAudioPath.resolve())
 
                 let transcribeDeadline = Date().addingTimeInterval(Self.autoTestTranscribeTimeoutSeconds(for: modelId))
                 while whisperService.e2eOverlayPayload.isEmpty && Date() < transcribeDeadline {

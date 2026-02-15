@@ -239,23 +239,20 @@ final class AppleSpeechEngine: ASREngine {
         recognizer: SFSpeechRecognizer,
         request: SFSpeechAudioBufferRecognitionRequest
     ) async throws -> SFSpeechRecognitionResult {
-        try await withCheckedThrowingContinuation { continuation in
-            let timeoutError = NSError(
-                domain: "AppleSpeechEngine",
-                code: -5,
-                userInfo: [NSLocalizedDescriptionKey: "Apple Speech recognition timed out waiting for a final result."]
-            )
+        // Race recognition against a detached timeout.
+        // IMPORTANT: recognizer.recognitionTask(with:request:) can block synchronously
+        // when dictation is disabled (waiting for speechd). Dispatch it to a background
+        // queue so the continuation body returns immediately and the timeout can fire.
+        let timeoutSeconds = Self.recognitionTimeoutSeconds
 
+        return try await withCheckedThrowingContinuation { continuation in
             let stateQueue = DispatchQueue(label: "AppleSpeechEngine.RecognitionState")
             var hasResumed = false
-            var recognitionTask: SFSpeechRecognitionTask?
-            var timeoutWorkItem: DispatchWorkItem?
 
             let resumeOnce: (Result<SFSpeechRecognitionResult, Error>) -> Void = { outcome in
                 stateQueue.sync {
                     guard !hasResumed else { return }
                     hasResumed = true
-                    timeoutWorkItem?.cancel()
                     switch outcome {
                     case .success(let result):
                         continuation.resume(returning: result)
@@ -265,21 +262,36 @@ final class AppleSpeechEngine: ASREngine {
                 }
             }
 
-            let timeout = DispatchWorkItem {
-                recognitionTask?.cancel()
-                resumeOnce(.failure(timeoutError))
+            // Detached timeout
+            Task.detached {
+                try? await Task.sleep(for: .seconds(timeoutSeconds))
+                resumeOnce(.failure(NSError(
+                    domain: "AppleSpeechEngine",
+                    code: -5,
+                    userInfo: [NSLocalizedDescriptionKey: "Apple Speech recognition timed out after \(Int(timeoutSeconds))s. Dictation may be disabled."]
+                )))
             }
-            timeoutWorkItem = timeout
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.recognitionTimeoutSeconds, execute: timeout)
 
-            recognitionTask = recognizer.recognitionTask(with: request) { result, error in
-                if let error {
-                    resumeOnce(.failure(Self.mapRecognitionError(error)))
-                    return
+            // Dispatch recognition to a background queue to avoid blocking the
+            // continuation body if recognizer.recognitionTask() hangs synchronously.
+            DispatchQueue.global(qos: .userInitiated).async {
+                let task = recognizer.recognitionTask(with: request) { result, error in
+                    if let error {
+                        resumeOnce(.failure(Self.mapRecognitionError(error)))
+                        return
+                    }
+                    guard let result else { return }
+                    if result.isFinal {
+                        resumeOnce(.success(result))
+                    }
                 }
-                guard let result else { return }
-                if result.isFinal {
-                    resumeOnce(.success(result))
+                // If the task is nil, the recognizer failed to start.
+                if task == nil {
+                    resumeOnce(.failure(NSError(
+                        domain: "AppleSpeechEngine",
+                        code: -7,
+                        userInfo: [NSLocalizedDescriptionKey: "Failed to create speech recognition task."]
+                    )))
                 }
             }
         }
