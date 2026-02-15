@@ -1,4 +1,4 @@
-# VoicePing iOS + macOS Offline Transcribe
+# iOS + macOS Offline Transcribe
 
 Offline-first iOS and macOS transcription app focused on local speech recognition.
 All inference runs on-device after model download.
@@ -23,36 +23,41 @@ Note: translation APIs exist in the service layer, but this repo build is transc
 
 Defined in `OfflineTranscription/Models/ModelInfo.swift` and `OfflineTranscription/Resources/model-catalog.default.json`. 15 model cards across 8 families, with multiple inference backends per Whisper and Qwen3 model.
 
-### All Models and Backends (sorted by speed)
+### All Models and Backends
 
-Model ID links point to the **original model** from the research team. Runtime distribution links are in the "Model Origins" table below. Benchmarked on iPad Pro 3rd gen (A12X, 4 GB) with 30s test audio.
+Model ID links point to the **original model** from the research team. Runtime distribution links are in the "Model Origins" table below. Sorted by macOS tok/s.
 
-| Model ID | Engine | Params | Disk | Languages | tok/s | RTF | Notes |
+| Model ID | Engine | Params | Disk | Languages | macOS tok/s | iOS tok/s | Notes |
 |---|---|---:|---:|---|---:|---:|---|
-| [`parakeet-tdt-v3`](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) | FluidAudio (CoreML) | 600M | ~600 MB | 25 European | 181.8 | 0.011 | |
-| [`zipformer-20m`](https://github.com/k2-fsa/icefall) | sherpa-onnx streaming | 20M | ~46 MB | English | 39.7 | 0.046 | |
-| [`whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | Cactus (whisper.cpp) | 39M | 32 MB | 99 languages | 37.8 | 0.051 | 9.5x faster than WhisperKit |
-| [`moonshine-tiny`](https://huggingface.co/usefulsensors/moonshine-tiny) | sherpa-onnx offline | 27M | ~125 MB | English | 37.3 | 0.052 | |
-| [`moonshine-base`](https://huggingface.co/usefulsensors/moonshine-base) | sherpa-onnx offline | 61M | ~280 MB | English | 31.3 | 0.062 | |
-| [`whisper-base`](https://huggingface.co/openai/whisper-base) | WhisperKit (CoreML) | 74M | ~150 MB | English† | 19.6 | 0.114 | FAIL on 4 GB (CoreML OOM)‡ |
-| [`sensevoice-small`](https://huggingface.co/FunAudioLLM/SenseVoiceSmall) | sherpa-onnx offline | 234M | ~240 MB | zh/en/ja/ko/yue | 15.6 | 0.124 | |
-| [`whisper-base`](https://huggingface.co/openai/whisper-base) | Cactus (whisper.cpp) | 74M | 60 MB | 99 languages | 13.8 | 0.140 | |
-| [`whisper-small`](https://huggingface.co/openai/whisper-small) | WhisperKit (CoreML) | 244M | ~500 MB | 99 languages | 6.3 | 0.339 | FAIL on 4 GB (CoreML OOM)‡ |
-| [`qwen3-asr-0.6b`](https://huggingface.co/Qwen/Qwen3-ASR-0.6B) | Pure C (ARM NEON) | 600M | ~1.8 GB | 30 languages | 5.6 | 0.345 | |
-| [`qwen3-asr-0.6b-onnx`](https://huggingface.co/Qwen/Qwen3-ASR-0.6B) | ONNX Runtime (INT8) | 600M | ~1.6 GB | 30 languages | 5.4 | 0.360 | |
-| [`whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | WhisperKit (CoreML) | 39M | ~80 MB | 99 languages | 4.5 | 0.486 | |
-| [`whisper-small`](https://huggingface.co/openai/whisper-small) | Cactus (whisper.cpp) | 244M | 190 MB | 99 languages | 3.9 | 0.492 | |
-| [`qwen3-asr-0.6b-mlx`](https://huggingface.co/Qwen/Qwen3-ASR-0.6B) | MLX (Metal GPU) | 600M | ~400 MB | 30 languages | - | - | macOS only |
-| [`whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | ~600 MB | 99 languages | 1.4 | 1.378 | FAIL on 4 GB (CoreML OOM)‡ |
-| [`whisper-large-v3-turbo-compressed`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | ~1 GB | 99 languages | 1.9 | 1.049 | FAIL on 4 GB (CoreML OOM)‡ |
-| [`whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | Cactus (whisper.cpp) | 809M | 574 MB | 99 languages | 0.8 | 2.486 | RTF >1 (slower than real-time) |
-| [`whisper-large-v3-turbo-compressed`](https://huggingface.co/openai/whisper-large-v3-turbo) | Cactus (whisper.cpp) | 809M | 874 MB | 99 languages | 0.8 | 2.555 | RTF >1 (slower than real-time) |
-| [`omnilingual-300m`](https://huggingface.co/facebook/mms-1b-all) | sherpa-onnx offline | 300M | ~365 MB | 1,600+ languages | - | - | FAIL — English output broken |
-| [`apple-speech`](https://developer.apple.com/documentation/speech/sfspeechrecognizer) | SFSpeechRecognizer | System | Built-in | 50+ languages | - | - | Requires Dictation enabled |
+| [`parakeet-tdt-v3`](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) | FluidAudio (CoreML) | 600M | ~600 MB | 25 European | 171.6 | 181.8 | |
+| [`moonshine-tiny`](https://huggingface.co/usefulsensors/moonshine-tiny) | sherpa-onnx offline | 27M | ~125 MB | English | 92.2 | 37.3 | |
+| [`zipformer-20m`](https://github.com/k2-fsa/icefall) | sherpa-onnx streaming | 20M | ~46 MB | English | 77.4 | 39.7 | |
+| [`moonshine-base`](https://huggingface.co/usefulsensors/moonshine-base) | sherpa-onnx offline | 61M | ~280 MB | English | 59.3 | 31.3 | |
+| [`sensevoice-small`](https://huggingface.co/FunAudioLLM/SenseVoiceSmall) | sherpa-onnx offline | 234M | ~240 MB | zh/en/ja/ko/yue | 27.4 | 15.6 | |
+| [`whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | WhisperKit (CoreML) | 39M | ~80 MB | 99 languages | 24.7 | 4.5 | |
+| [`whisper-base`](https://huggingface.co/openai/whisper-base) | WhisperKit (CoreML) | 74M | ~150 MB | English† | 23.3 | 19.6 | iOS FAIL on 4 GB‡ |
+| [`whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | whisper.cpp | 39M | 32 MB | 99 languages | — | 37.8 | iOS: 9.5x faster than WhisperKit |
+| [`apple-speech`](https://developer.apple.com/documentation/speech/sfspeechrecognizer) | SFSpeechRecognizer | System | Built-in | 50+ languages | 13.1 | — | Requires Dictation enabled |
+| [`whisper-base`](https://huggingface.co/openai/whisper-base) | whisper.cpp | 74M | 60 MB | 99 languages | — | 13.8 | |
+| [`whisper-small`](https://huggingface.co/openai/whisper-small) | WhisperKit (CoreML) | 244M | ~500 MB | 99 languages | 8.7 | 6.3 | iOS FAIL on 4 GB‡ |
+| [`qwen3-asr-0.6b-onnx`](https://huggingface.co/Qwen/Qwen3-ASR-0.6B) | ONNX Runtime (INT8) | 600M | ~1.6 GB | 30 languages | 8.0 | 5.4 | |
+| [`qwen3-asr-0.6b`](https://huggingface.co/Qwen/Qwen3-ASR-0.6B) | Pure C (ARM NEON) | 600M | ~1.8 GB | 30 languages | 5.7 | 5.6 | |
+| [`whisper-small`](https://huggingface.co/openai/whisper-small) | whisper.cpp | 244M | 190 MB | 99 languages | — | 3.9 | |
+| [`qwen3-asr-0.6b-mlx`](https://huggingface.co/Qwen/Qwen3-ASR-0.6B) | MLX (Metal GPU) | 600M | ~400 MB | 30 languages | — | — | macOS only |
+| [`whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | ~600 MB | 99 languages | 1.9 | 1.4 | iOS FAIL on 4 GB‡ |
+| [`whisper-large-v3-turbo-compressed`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | ~1 GB | 99 languages | 1.5 | 1.9 | iOS FAIL on 4 GB‡ |
+| [`whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | whisper.cpp | 809M | 574 MB | 99 languages | — | 0.8 | RTF >1 (slower than real-time) |
+| [`whisper-large-v3-turbo-compressed`](https://huggingface.co/openai/whisper-large-v3-turbo) | whisper.cpp | 809M | 874 MB | 99 languages | — | 0.8 | RTF >1 (slower than real-time) |
+| [`omnilingual-300m`](https://huggingface.co/facebook/mms-1b-all) | sherpa-onnx offline | 300M | ~365 MB | 1,600+ languages | 0.03 | — | FAIL — English output broken |
 
+> **Benchmark devices:**
+> - **macOS**: MacBook Air M4, 32 GB RAM (Low Power Mode on during benchmark)
+> - **iOS**: iPad Pro 3rd gen (A12X Bionic, 4 GB RAM)
+> - **Audio fixture**: 30s English speech (16kHz mono WAV)
+>
 > † whisper-base (WhisperKit) uses `.en` English-only variant due to multilingual CoreML conversion issues.
-> ‡ WhisperKit E2E FAIL on 4 GB iPad Pro 3rd gen — CoreML compilation exceeds timeout / OOM. WhisperKit timing is from cached (pre-compiled) CoreML runs; first run adds 30-120s.
-> RTF = Real-Time Factor (inference time / audio duration). RTF < 1.0 = faster than real-time.
+> ‡ WhisperKit E2E FAIL on 4 GB iPad — CoreML compilation OOM. iOS timing is from cached (pre-compiled) CoreML runs; first run adds 30-120s compilation.
+> — = not benchmarked on that platform. whisper.cpp backend benchmarked on iOS only. RTF = inference time / audio duration; < 1.0 = faster than real-time.
 
 ### Model Origins
 
@@ -70,12 +75,12 @@ Original models vs runtime distribution formats used by each engine.
 | Apple Speech | [Apple](https://developer.apple.com/documentation/speech) | System built-in | On-device (no download) |
 
 Download URL sources (code-accurate):
-- Cactus (whisper.cpp): `OfflineTranscription/Resources/model-catalog.default.json` contains exact Hugging Face `resolve/main/*` artifact URLs + `sha256` checksums.
+- whisper.cpp: `OfflineTranscription/Resources/model-catalog.default.json` contains exact Hugging Face `resolve/main/*` artifact URLs + `sha256` checksums.
 - sherpa-onnx + Qwen (Pure C/ONNX): `OfflineTranscription/Services/ModelDownloader.swift` constructs Hugging Face `resolve/main/*` URLs (default org: `csukuangfj`).
 - WhisperKit: `WhisperKit.download(... from: "argmaxinc/whisperkit-coreml")`.
 - FluidAudio: `AsrModels.downloadAndLoad(version: .v3)` downloads from Hugging Face `FluidInference/*` repos (see FluidAudio docs).
 
-Cactus uses GGML quantized models (Q5_0/Q5_1/Q8_0) with no CoreML compilation step — instant model load, 100% reliable on all devices. WhisperKit uses ANE/GPU acceleration and is faster for larger models once CoreML is cached, but requires 30-120s first-run compilation and fails on memory-constrained devices. Full benchmark data in `artifacts/benchmarks/`.
+whisper.cpp uses GGML quantized models (Q5_0/Q5_1/Q8_0) with no CoreML compilation step — instant model load, 100% reliable on all devices. WhisperKit uses ANE/GPU acceleration and is faster for larger models once CoreML is cached, but requires 30-120s first-run compilation and fails on memory-constrained devices. Full benchmark data in `artifacts/benchmarks/`.
 
 `parakeet-tdt-v3` is filtered at runtime when device capability checks fail.
 
@@ -83,7 +88,7 @@ Cactus uses GGML quantized models (Q5_0/Q5_1/Q8_0) with no CoreML compilation st
 
 - Orchestrator: `OfflineTranscription/Services/WhisperService.swift`
 - Engines (9 total):
-  - `CactusEngine` — Whisper family via [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (CPU + Metal GPU, GGML quantized)
+  - `WhisperCppEngine` — Whisper family via [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (CPU + Metal GPU, GGML quantized)
   - `WhisperKitEngine` — Whisper family via [WhisperKit](https://github.com/argmaxinc/WhisperKit) CoreML (ANE + GPU)
   - `SherpaOnnxOfflineEngine` — Moonshine, SenseVoice, Omnilingual via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) ONNX Runtime
   - `SherpaOnnxStreamingEngine` — Zipformer via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) ONNX Runtime (100 ms chunks)
@@ -92,7 +97,7 @@ Cactus uses GGML quantized models (Q5_0/Q5_1/Q8_0) with no CoreML compilation st
   - `QwenASREngine` — [Qwen3 ASR 0.6B](https://huggingface.co/Qwen/Qwen3-ASR-0.6B) via [antirez/qwen-asr](https://github.com/antirez/qwen-asr) pure C (ARM NEON, 6 threads)
   - `QwenOnnxEngine` — [Qwen3 ASR 0.6B INT8](https://huggingface.co/jima/qwen3-asr-0.6b-onnx-int8) via ONNX Runtime
   - `MLXEngine` — [Qwen3 ASR 0.6B 4-bit](https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-4bit) via [MLX](https://github.com/ml-explore/mlx-swift) Metal GPU (macOS Apple Silicon only)
-- Backend selection: `BackendResolver` with automatic fallback (iOS: cactus → legacy; macOS: mlx → legacy)
+- Backend selection: `BackendResolver` with automatic fallback (iOS: whisper.cpp → legacy; macOS: mlx → legacy)
 - Audio capture: `OfflineTranscription/Services/AudioRecorder.swift`
 - System capture:
   - `BroadcastUploadExtension/SampleHandler.swift` (ReplayKit)

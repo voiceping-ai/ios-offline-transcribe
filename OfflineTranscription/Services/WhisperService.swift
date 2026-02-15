@@ -1,4 +1,5 @@
 import Foundation
+import Dispatch
 import WhisperKit
 import Observation
 @preconcurrency import AVFoundation
@@ -181,12 +182,21 @@ final class WhisperService {
     private let systemMetrics = SystemMetrics()
     private var metricsTask: Task<Void, Never>?
     private var appDiagLines: [String] = []
+    private static let appDiagWriteQueue = DispatchQueue(label: "com.voiceping.transcribe.appDiag", qos: .utility)
     private func writeAppDiag(_ line: String) {
         appDiagLines.append(line)
+
+        // Avoid blocking the main actor (and hanging CI) on disk IO during tests.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+
+        // Best-effort debug logging: keep it out of the synchronous stopRecording() path.
+        let payload = appDiagLines.joined(separator: "\n")
         guard let url = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: SharedAudioRingBuffer.appGroupID
         )?.appendingPathComponent("app_diag.txt") else { return }
-        try? appDiagLines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+        Self.appDiagWriteQueue.async {
+            try? payload.write(to: url, atomically: true, encoding: .utf8)
+        }
     }
     private let selectedModelKey = "selectedModelVariant"
     private let selectedCardKey = "selectedModelCardId"

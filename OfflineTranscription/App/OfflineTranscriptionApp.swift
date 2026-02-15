@@ -13,15 +13,17 @@ enum AutoTestAudioPath {
             return env
         }
 
+        // Prefer bundle resource — always readable even when sandboxed (macOS).
+        // /tmp paths may pass fileExists but fail AVAudioFile read under sandbox.
+        if let bundled = Bundle.main.path(forResource: "test_speech", ofType: "wav") {
+            return bundled
+        }
+
         let fm = FileManager.default
         for p in ["/private/tmp/test_speech.wav", "/tmp/test_speech.wav"] {
             if fm.fileExists(atPath: p) {
                 return p
             }
-        }
-
-        if let bundled = Bundle.main.path(forResource: "test_speech", ofType: "wav") {
-            return bundled
         }
 
         return "/tmp/test_speech.wav"

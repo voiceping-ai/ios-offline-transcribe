@@ -53,7 +53,7 @@ final class WhisperServiceTests: XCTestCase {
     // MARK: - Iteration 3
     func testModelInfoCatalog() {
         let models = ModelInfo.availableModels
-        XCTAssertEqual(models.count, 14)
+        XCTAssertEqual(models.count, 15)
         XCTAssertEqual(models[0].id, "whisper-tiny")
         XCTAssertEqual(models[1].id, "whisper-base")
         XCTAssertEqual(models[2].id, "whisper-small")
@@ -67,7 +67,8 @@ final class WhisperServiceTests: XCTestCase {
         XCTAssertEqual(models[10].id, "parakeet-tdt-v3")
         XCTAssertEqual(models[11].id, "apple-speech")
         XCTAssertEqual(models[12].id, "qwen3-asr-0.6b")
-        XCTAssertEqual(models[13].id, "qwen3-asr-0.6b-onnx")
+        XCTAssertEqual(models[13].id, "qwen3-asr-0.6b-mlx")
+        XCTAssertEqual(models[14].id, "qwen3-asr-0.6b-onnx")
         XCTAssertEqual(ModelInfo.defaultModel.id, "whisper-base")
     }
 
@@ -178,8 +179,9 @@ final class WhisperServiceTests: XCTestCase {
         XCTAssertTrue(parakeetModels.allSatisfy { $0.engineType == .fluidAudio })
 
         let qwenModels = ModelInfo.availableModels.filter { $0.family == .qwenASR }
-        XCTAssertEqual(qwenModels.count, 2)
+        XCTAssertEqual(qwenModels.count, 3)
         XCTAssertTrue(qwenModels.contains { $0.engineType == .qwenASR })
+        XCTAssertTrue(qwenModels.contains { $0.engineType == .mlx })
         XCTAssertTrue(qwenModels.contains { $0.engineType == .qwenOnnx })
     }
 
@@ -189,7 +191,7 @@ final class WhisperServiceTests: XCTestCase {
         XCTAssertEqual(ModelInfo.findByLegacyId("small")?.id, "whisper-small")
         XCTAssertEqual(ModelInfo.findByLegacyId("whisper-base")?.id, "whisper-base")
         XCTAssertEqual(ModelInfo.findByLegacyId("qwen3-asr-0.6b")?.id, "qwen3-asr-0.6b-onnx")
-        XCTAssertEqual(ModelInfo.findByLegacyId("qwen3-asr-0.6b-mlx")?.id, "qwen3-asr-0.6b-onnx")
+        XCTAssertEqual(ModelInfo.findByLegacyId("qwen3-asr-0.6b-mlx")?.id, "qwen3-asr-0.6b-mlx")
         XCTAssertNil(ModelInfo.findByLegacyId("nonexistent"))
     }
 

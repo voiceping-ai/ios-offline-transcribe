@@ -22,7 +22,7 @@ final class ModelLifecycleTests: XCTestCase {
     // MARK: - Model Catalog
 
     func testModelCatalogCount() {
-        XCTAssertEqual(ModelInfo.availableModels.count, 14)
+        XCTAssertEqual(ModelInfo.availableModels.count, 15)
     }
 
     func testModelCatalogOrder() {
@@ -40,7 +40,8 @@ final class ModelLifecycleTests: XCTestCase {
         XCTAssertEqual(models[10].id, "parakeet-tdt-v3")
         XCTAssertEqual(models[11].id, "apple-speech")
         XCTAssertEqual(models[12].id, "qwen3-asr-0.6b")
-        XCTAssertEqual(models[13].id, "qwen3-asr-0.6b-onnx")
+        XCTAssertEqual(models[13].id, "qwen3-asr-0.6b-mlx")
+        XCTAssertEqual(models[14].id, "qwen3-asr-0.6b-onnx")
     }
 
     func testWhisperModelsHaveVariants() {
@@ -94,6 +95,7 @@ final class ModelLifecycleTests: XCTestCase {
         XCTAssertTrue(names.contains("Parakeet TDT 0.6B"))
         XCTAssertTrue(names.contains("Apple Speech"))
         XCTAssertTrue(names.contains("Qwen3 ASR 0.6B"))
+        XCTAssertTrue(names.contains("Qwen3 ASR 0.6B (MLX)"))
         XCTAssertTrue(names.contains("Qwen3 ASR 0.6B (ONNX)"))
     }
 
@@ -140,7 +142,7 @@ final class ModelLifecycleTests: XCTestCase {
         XCTAssertEqual(fluidAudioModels.count, 1)
         XCTAssertEqual(appleSpeechModels.count, 1)
         XCTAssertEqual(qwenModels.count, 1)
-        XCTAssertEqual(mlxModels.count, 0)
+        XCTAssertEqual(mlxModels.count, 1)
         XCTAssertEqual(onnxModels.count, 1)
     }
 
@@ -158,7 +160,7 @@ final class ModelLifecycleTests: XCTestCase {
         XCTAssertEqual(ModelInfo.findByLegacyId("small")?.id, "whisper-small")
         XCTAssertEqual(ModelInfo.findByLegacyId("whisper-base")?.id, "whisper-base")
         XCTAssertEqual(ModelInfo.findByLegacyId("qwen3-asr-0.6b")?.id, "qwen3-asr-0.6b-onnx")
-        XCTAssertEqual(ModelInfo.findByLegacyId("qwen3-asr-0.6b-mlx")?.id, "qwen3-asr-0.6b-onnx")
+        XCTAssertEqual(ModelInfo.findByLegacyId("qwen3-asr-0.6b-mlx")?.id, "qwen3-asr-0.6b-mlx")
         XCTAssertNil(ModelInfo.findByLegacyId("nonexistent"))
     }
 
