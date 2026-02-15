@@ -15,7 +15,7 @@ All inference runs on-device after model download.
 
 ![iOS File Transcription Demo](docs/screenshots/ios-file-transcription-demo.gif)
 
-> SenseVoice Small transcribing a 30s audio file on iPad Pro 3rd gen (A12X), 23.2 tok/s. [Full video (MP4)](docs/screenshots/ios-file-transcription-demo.mp4).
+> SenseVoice Small transcribing a 30s audio file on iPad Pro 3rd gen (A12X), 23.6 tok/s. [Full video (MP4)](docs/screenshots/ios-file-transcription-demo.mp4).
 
 ### macOS (MacBook Air M4)
 

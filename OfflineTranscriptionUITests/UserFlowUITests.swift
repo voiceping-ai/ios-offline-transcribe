@@ -511,6 +511,120 @@ final class UserFlowUITests: XCTestCase {
         )
     }
 
+    // MARK: - Test 11: README Screenshots (SenseVoice Small)
+
+    /// Captures all screenshots needed for README:
+    /// - ios-home.png: Model selection setup screen
+    /// - ios-transcription.png: SenseVoice Small transcription result
+    /// - ios-system-recording.png: System mode selected
+    /// - Demo frames for GIF (idle → transcribing → result)
+    func test_11_readmeScreenshots() {
+        let demoDir = "/tmp/ios_readme_screenshots"
+        try? FileManager.default.removeItem(atPath: demoDir)
+        try? FileManager.default.createDirectory(atPath: demoDir, withIntermediateDirectories: true)
+
+        // --- Phase 1: Capture setup/home screen ---
+        let setupApp = XCUIApplication()
+        setupApp.launchArguments = ["--reset-state"]
+        setupApp.launch()
+        sleep(3)
+        saveDemoFrame(setupApp, to: demoDir, name: "ios-home.png")
+        setupApp.terminate()
+
+        // --- Phase 2: SenseVoice Small transcription + system mode ---
+        let app = launchApp(modelId: "sensevoice-small")
+        sleep(1)
+
+        // Wait for model load
+        waitForModelLoad(app)
+        dismissAnyAlerts(app)
+        sleep(1)
+
+        // Capture idle state (demo frame 1)
+        saveDemoFrame(app, to: demoDir, name: "demo_01_idle.png")
+
+        // Tap test file for transcription
+        let testFileBtn = app.buttons["test_file_button"]
+        XCTAssertTrue(testFileBtn.waitForExistence(timeout: shortTimeout))
+        testFileBtn.tap()
+        sleep(2)
+
+        // Capture transcribing state (demo frame 2)
+        saveDemoFrame(app, to: demoDir, name: "demo_02_transcribing.png")
+
+        // Wait for confirmed text
+        let confirmedText = app.staticTexts["confirmed_text"]
+        XCTAssertTrue(
+            confirmedText.waitForExistence(timeout: transcriptionTimeout),
+            "Confirmed text should appear after transcription"
+        )
+        sleep(1)
+
+        // Capture transcription result (demo frame 3 + ios-transcription.png)
+        saveDemoFrame(app, to: demoDir, name: "demo_03_result.png")
+        saveDemoFrame(app, to: demoDir, name: "ios-transcription.png")
+
+        // Verify transcription contains expected keywords
+        let text = confirmedText.label.lowercased()
+        XCTAssertTrue(
+            text.contains("country") || text.contains("ask") || text.contains("american"),
+            "Transcription should contain expected keywords, got: \(text)"
+        )
+
+        // --- Phase 3: Clear transcription, then switch to System mode ---
+        // Open settings and clear transcription so placeholder text shows
+        let settingsBtn = app.buttons["settings_button"]
+        if settingsBtn.waitForExistence(timeout: shortTimeout) {
+            settingsBtn.tap()
+            sleep(1)
+            let clearBtn = app.buttons["settings_clear_transcription"]
+            if clearBtn.waitForExistence(timeout: shortTimeout) {
+                clearBtn.tap()
+                sleep(1)
+            }
+            let doneBtn = app.buttons["settings_done_button"]
+            if doneBtn.waitForExistence(timeout: shortTimeout) {
+                doneBtn.tap()
+                sleep(1)
+            }
+        }
+
+        // Switch to System mode — try multiple approaches for the segmented control
+        let systemButton = app.buttons["System"]
+        if systemButton.waitForExistence(timeout: shortTimeout) {
+            systemButton.tap()
+            sleep(2)
+        } else {
+            // Fallback: try segmented control by identifier
+            let picker = app.segmentedControls["audio_source_picker"]
+            if picker.waitForExistence(timeout: shortTimeout) {
+                picker.buttons.element(boundBy: 1).tap()
+                sleep(2)
+            }
+        }
+
+        // Capture system recording mode
+        saveDemoFrame(app, to: demoDir, name: "ios-system-recording.png")
+
+        captureScreenshot(app, step: "readme_done")
+        NSLog("[README] All screenshots saved to %@", demoDir)
+    }
+
+    // MARK: - Demo Frame Helper
+
+    private func saveDemoFrame(_ app: XCUIApplication, to dir: String, name: String) {
+        let screenshot = app.screenshot()
+        let path = "\(dir)/\(name)"
+        try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: path))
+
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "readme_\(name)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+
+        NSLog("[README] Frame saved: %@", path)
+    }
+
     // MARK: - Helpers
 
     private func launchApp(
