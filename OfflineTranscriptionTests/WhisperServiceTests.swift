@@ -196,11 +196,12 @@ final class WhisperServiceTests: XCTestCase {
 
     func testModelsByFamily() {
         let groups = ModelInfo.modelsByFamily
-        XCTAssertEqual(groups.count, 8)
         let families = Set(groups.map(\.family))
-        XCTAssertEqual(
-            families,
-            [.whisper, .moonshine, .senseVoice, .zipformer, .omnilingual, .parakeet, .appleSpeech, .qwenASR]
-        )
+        // Parakeet (FluidAudio) is filtered out on devices without A13+
+        var expected: Set<ModelFamily> = [.whisper, .moonshine, .senseVoice, .zipformer, .omnilingual, .appleSpeech, .qwenASR]
+        if FluidAudioEngine.isDeviceSupported {
+            expected.insert(.parakeet)
+        }
+        XCTAssertEqual(families, expected)
     }
 }
