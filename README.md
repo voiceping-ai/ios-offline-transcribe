@@ -126,25 +126,25 @@ Defined in `OfflineTranscription/Models/ModelInfo.swift` and `OfflineTranscripti
 
 ![iOS Inference Speed](docs/ios_tokens_per_second.svg)
 
-| Model ID | Engine | Params | Disk | Languages | tok/s | Status |
+| Model | Engine | Params | Model size (download) | Languages | tok/s | Status |
 |---|---|---:|---:|---|---:|---|
-| [`parakeet-tdt-v3`](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) | FluidAudio (CoreML) | 600M | 600 MB | 25 European | 181.8 | ✅ |
-| [`zipformer-20m`](https://github.com/k2-fsa/icefall) | sherpa-onnx streaming | 20M | 46 MB | English | 39.7 | ✅ |
-| [`whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | whisper.cpp | 39M | 31 MB | 99 languages | 37.8 | ✅ |
-| [`moonshine-tiny`](https://huggingface.co/usefulsensors/moonshine-tiny) | sherpa-onnx offline | 27M | 125 MB | English | 37.3 | ✅ |
-| [`moonshine-base`](https://huggingface.co/usefulsensors/moonshine-base) | sherpa-onnx offline | 61M | 280 MB | English | 31.3 | ✅ |
-| [`whisper-base`](https://huggingface.co/openai/whisper-base) | WhisperKit (CoreML) | 74M | 150 MB | English† | 19.6 | ❌ OOM on 4 GB‡ |
-| [`sensevoice-small`](https://huggingface.co/FunAudioLLM/SenseVoiceSmall) | sherpa-onnx offline | 234M | 240 MB | zh/en/ja/ko/yue | 15.6 | ✅ |
-| [`whisper-base`](https://huggingface.co/openai/whisper-base) | whisper.cpp | 74M | 57 MB | 99 languages | 13.8 | ✅ |
-| [`whisper-small`](https://huggingface.co/openai/whisper-small) | WhisperKit (CoreML) | 244M | 500 MB | 99 languages | 6.3 | ❌ OOM on 4 GB‡ |
-| [`qwen3-asr-0.6b`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | Pure C (ARM NEON) | 600M | 1.8 GB | 30 languages | 5.6 | ✅ |
-| [`qwen3-asr-0.6b-onnx`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | ONNX Runtime (INT8) | 600M | 1.6 GB | 30 languages | 5.4 | ✅ |
-| [`whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | WhisperKit (CoreML) | 39M | 80 MB | 99 languages | 4.5 | ✅ |
-| [`whisper-small`](https://huggingface.co/openai/whisper-small) | whisper.cpp | 244M | 181 MB | 99 languages | 3.9 | ✅ |
-| [`whisper-large-v3-turbo-compressed`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | 1 GB | 99 languages | 1.9 | ❌ OOM on 4 GB‡ |
-| [`whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | 600 MB | 99 languages | 1.4 | ❌ OOM on 4 GB‡ |
-| [`whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | whisper.cpp | 809M | 547 MB | 99 languages | 0.8 | ⚠️ RTF >1 |
-| [`whisper-large-v3-turbo-compressed`](https://huggingface.co/openai/whisper-large-v3-turbo) | whisper.cpp | 809M | 834 MB | 99 languages | 0.8 | ⚠️ RTF >1 |
+| [`parakeet-tdt-v3`](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) | FluidAudio (CoreML) | 600M | ~600 MB (CoreML) | 25 European | 181.8 | ✅ |
+| [`zipformer-20m`](https://github.com/k2-fsa/icefall) | sherpa-onnx streaming | 20M | ~46 MB (INT8) | English | 39.7 | ✅ |
+| [`whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | whisper.cpp | 39M | ~31 MB (GGML Q5_1) | 99 languages | 37.8 | ✅ |
+| [`moonshine-tiny`](https://huggingface.co/usefulsensors/moonshine-tiny) | sherpa-onnx offline | 27M | ~125 MB (INT8) | English | 37.3 | ✅ |
+| [`moonshine-base`](https://huggingface.co/usefulsensors/moonshine-base) | sherpa-onnx offline | 61M | ~280 MB (INT8) | English | 31.3 | ✅ |
+| [`whisper-base`](https://huggingface.co/openai/whisper-base) | WhisperKit (CoreML) | 74M | ~150 MB (CoreML) | English† | 19.6 | ❌ OOM on 4 GB‡ |
+| [`sensevoice-small`](https://huggingface.co/FunAudioLLM/SenseVoiceSmall) | sherpa-onnx offline | 234M | ~240 MB (INT8) | zh/en/ja/ko/yue | 15.6 | ✅ |
+| [`whisper-base`](https://huggingface.co/openai/whisper-base) | whisper.cpp | 74M | ~57 MB (GGML Q5_1) | 99 languages | 13.8 | ✅ |
+| [`whisper-small`](https://huggingface.co/openai/whisper-small) | WhisperKit (CoreML) | 244M | ~500 MB (CoreML) | 99 languages | 6.3 | ❌ OOM on 4 GB‡ |
+| [`qwen3-asr-0.6b`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | Pure C (ARM NEON) | 600M | ~1.8 GB (safetensors) | 30 languages | 5.6 | ✅ |
+| [`qwen3-asr-0.6b-onnx`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | ONNX Runtime (INT8) | 600M | ~1.6 GB (INT8) | 30 languages | 5.4 | ✅ |
+| [`whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | WhisperKit (CoreML) | 39M | ~80 MB (CoreML) | 99 languages | 4.5 | ✅ |
+| [`whisper-small`](https://huggingface.co/openai/whisper-small) | whisper.cpp | 244M | ~181 MB (GGML Q5_1) | 99 languages | 3.9 | ✅ |
+| [`whisper-large-v3-turbo-compressed`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | ~1 GB (CoreML) | 99 languages | 1.9 | ❌ OOM on 4 GB‡ |
+| [`whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | ~600 MB (CoreML) | 99 languages | 1.4 | ❌ OOM on 4 GB‡ |
+| [`whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | whisper.cpp | 809M | ~547 MB (GGML Q5_0) | 99 languages | 0.8 | ⚠️ RTF >1 |
+| [`whisper-large-v3-turbo-compressed`](https://huggingface.co/openai/whisper-large-v3-turbo) | whisper.cpp | 809M | ~834 MB (GGML Q8_0) | 99 languages | 0.8 | ⚠️ RTF >1 |
 
 > † whisper-base (WhisperKit) uses `.en` English-only variant due to multilingual CoreML conversion issues.
 > ‡ WhisperKit E2E FAIL on 4 GB iPad — CoreML compilation OOM. Timing is from cached (pre-compiled) CoreML runs; first run adds 30-120s compilation.
@@ -155,23 +155,23 @@ Defined in `OfflineTranscription/Models/ModelInfo.swift` and `OfflineTranscripti
 
 ![macOS Inference Speed](docs/macos_tokens_per_second.svg)
 
-| Model ID | Engine | Params | Disk | Languages | tok/s | Status |
+| Model | Engine | Params | Model size (download) | Languages | tok/s | Status |
 |---|---|---:|---:|---|---:|---|
-| [`parakeet-tdt-v3`](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) | FluidAudio (CoreML) | 600M | 600 MB | 25 European | 171.6 | ✅ |
-| [`moonshine-tiny`](https://huggingface.co/usefulsensors/moonshine-tiny) | sherpa-onnx offline | 27M | 125 MB | English | 92.2 | ✅ |
-| [`zipformer-20m`](https://github.com/k2-fsa/icefall) | sherpa-onnx streaming | 20M | 46 MB | English | 77.4 | ✅ |
-| [`moonshine-base`](https://huggingface.co/usefulsensors/moonshine-base) | sherpa-onnx offline | 61M | 280 MB | English | 59.3 | ✅ |
-| [`sensevoice-small`](https://huggingface.co/FunAudioLLM/SenseVoiceSmall) | sherpa-onnx offline | 234M | 240 MB | zh/en/ja/ko/yue | 27.4 | ✅ |
-| [`whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | WhisperKit (CoreML) | 39M | 80 MB | 99 languages | 24.7 | ✅ |
-| [`whisper-base`](https://huggingface.co/openai/whisper-base) | WhisperKit (CoreML) | 74M | 150 MB | English† | 23.3 | ✅ |
-| [`apple-speech`](https://developer.apple.com/documentation/speech/sfspeechrecognizer) | SFSpeechRecognizer | System | Built-in | 50+ languages | 13.1 | ✅ |
-| [`whisper-small`](https://huggingface.co/openai/whisper-small) | WhisperKit (CoreML) | 244M | 500 MB | 99 languages | 8.7 | ✅ |
-| [`qwen3-asr-0.6b-onnx`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | ONNX Runtime (INT8) | 600M | 1.6 GB | 30 languages | 8.0 | ✅ |
-| [`qwen3-asr-0.6b`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | Pure C (ARM NEON) | 600M | 1.8 GB | 30 languages | 5.7 | ✅ |
-| [`whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | 600 MB | 99 languages | 1.9 | ✅ |
-| [`whisper-large-v3-turbo-compressed`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | 1 GB | 99 languages | 1.5 | ✅ |
-| [`qwen3-asr-0.6b-mlx`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | MLX (Metal GPU) | 600M | 400 MB | 30 languages | — | 🆕 Not benchmarked |
-| [`omnilingual-300m`](https://huggingface.co/facebook/mms-1b-all) | sherpa-onnx offline | 300M | 365 MB | 1,600+ languages | 0.03 | ❌ English broken |
+| [`parakeet-tdt-v3`](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) | FluidAudio (CoreML) | 600M | ~600 MB (CoreML) | 25 European | 171.6 | ✅ |
+| [`moonshine-tiny`](https://huggingface.co/usefulsensors/moonshine-tiny) | sherpa-onnx offline | 27M | ~125 MB (INT8) | English | 92.2 | ✅ |
+| [`zipformer-20m`](https://github.com/k2-fsa/icefall) | sherpa-onnx streaming | 20M | ~46 MB (INT8) | English | 77.4 | ✅ |
+| [`moonshine-base`](https://huggingface.co/usefulsensors/moonshine-base) | sherpa-onnx offline | 61M | ~280 MB (INT8) | English | 59.3 | ✅ |
+| [`sensevoice-small`](https://huggingface.co/FunAudioLLM/SenseVoiceSmall) | sherpa-onnx offline | 234M | ~240 MB (INT8) | zh/en/ja/ko/yue | 27.4 | ✅ |
+| [`whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | WhisperKit (CoreML) | 39M | ~80 MB (CoreML) | 99 languages | 24.7 | ✅ |
+| [`whisper-base`](https://huggingface.co/openai/whisper-base) | WhisperKit (CoreML) | 74M | ~150 MB (CoreML) | English† | 23.3 | ✅ |
+| [`apple-speech`](https://developer.apple.com/documentation/speech/sfspeechrecognizer) | SFSpeechRecognizer | System | Built-in (0 MB download) | 50+ languages | 13.1 | ✅ |
+| [`whisper-small`](https://huggingface.co/openai/whisper-small) | WhisperKit (CoreML) | 244M | ~500 MB (CoreML) | 99 languages | 8.7 | ✅ |
+| [`qwen3-asr-0.6b-onnx`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | ONNX Runtime (INT8) | 600M | ~1.6 GB (INT8) | 30 languages | 8.0 | ✅ |
+| [`qwen3-asr-0.6b`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | Pure C (ARM NEON) | 600M | ~1.8 GB (safetensors) | 30 languages | 5.7 | ✅ |
+| [`whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | ~600 MB (CoreML) | 99 languages | 1.9 | ✅ |
+| [`whisper-large-v3-turbo-compressed`](https://huggingface.co/openai/whisper-large-v3-turbo) | WhisperKit (CoreML) | 809M | ~1 GB (CoreML) | 99 languages | 1.5 | ✅ |
+| [`qwen3-asr-0.6b-mlx`](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | MLX (Metal GPU) | 600M | ~400 MB (4-bit) | 30 languages | — | 🆕 Not benchmarked |
+| [`omnilingual-300m`](https://huggingface.co/facebook/mms-1b-all) | sherpa-onnx offline | 300M | ~365 MB (INT8) | 1,600+ languages | 0.03 | ❌ English broken |
 
 > † whisper-base (WhisperKit) uses `.en` English-only variant due to multilingual CoreML conversion issues.
 
@@ -188,7 +188,7 @@ Original models vs runtime distribution formats used by each engine.
 | SenseVoice | [Alibaba FunAudioLLM](https://huggingface.co/FunAudioLLM/SenseVoiceSmall) | Apache 2.0 | [sherpa-onnx INT8](https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17) |
 | Zipformer | [k2-fsa / icefall](https://github.com/k2-fsa/icefall) | Apache 2.0 | [sherpa-onnx](https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17) |
 | Omnilingual | [Facebook MMS](https://huggingface.co/facebook/mms-1b-all) | CC-BY-NC 4.0 | [sherpa-onnx INT8](https://huggingface.co/csukuangfj2/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12) |
-| Parakeet TDT | [NVIDIA NeMo](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) | CC-BY 4.0 | FluidAudio CoreML · [FluidInference/parakeet-tdt-0.6b-v3-coreml](https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml) |
+| Parakeet TDT 0.6B v3 | [NVIDIA NeMo](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) | CC-BY 4.0 | FluidAudio CoreML · [FluidInference/parakeet-tdt-0.6b-v3-coreml](https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml) |
 | Qwen3 ASR | [Alibaba Qwen](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) | Apache 2.0 | [antirez/qwen-asr](https://github.com/antirez/qwen-asr) (Pure C) · ONNX INT8 · [MLX 4-bit](https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-4bit) |
 | Apple Speech | [Apple](https://developer.apple.com/documentation/speech) | System built-in | On-device (no download) |
 
@@ -210,7 +210,7 @@ whisper.cpp uses GGML quantized models (Q5_0/Q5_1/Q8_0) with no CoreML compilati
   - `WhisperKitEngine` — Whisper family via [WhisperKit](https://github.com/argmaxinc/WhisperKit) CoreML (ANE + GPU)
   - `SherpaOnnxOfflineEngine` — Moonshine, SenseVoice, Omnilingual via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) ONNX Runtime
   - `SherpaOnnxStreamingEngine` — Zipformer via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) ONNX Runtime (100 ms chunks)
-  - `FluidAudioEngine` — Parakeet TDT via [FluidAudio](https://github.com/FluidInference/FluidAudio) CoreML
+  - `FluidAudioEngine` — Parakeet TDT v3 via [FluidAudio](https://github.com/FluidInference/FluidAudio) CoreML
   - `AppleSpeechEngine` — Built-in [SFSpeechRecognizer](https://developer.apple.com/documentation/speech/sfspeechrecognizer)
   - `QwenASREngine` — [Qwen3 ASR 0.6B](https://huggingface.co/Qwen/Qwen3-ASR-0.8B) via [antirez/qwen-asr](https://github.com/antirez/qwen-asr) pure C (ARM NEON, 6 threads)
   - `QwenOnnxEngine` — [Qwen3 ASR 0.6B INT8](https://huggingface.co/jima/qwen3-asr-0.6b-onnx-int8) via ONNX Runtime
@@ -339,7 +339,7 @@ All audio recording and transcription run locally on device. The app makes **no 
 | sherpa-onnx model download | `huggingface.co/csukuangfj/*` | User selects a Moonshine, SenseVoice, Whisper (sherpa), Zipformer, or Omnilingual model | None (HTTPS GET only) |
 | WhisperKit model download | `huggingface.co/argmaxinc/whisperkit-coreml` | User selects a Whisper model (WhisperKit backend) | None (HTTPS GET only) |
 | whisper.cpp model download | `huggingface.co/ggerganov/whisper.cpp` | User selects a Whisper model (whisper.cpp backend) | None (HTTPS GET only) |
-| FluidAudio model download | `huggingface.co/FluidInference/*` | User selects Parakeet TDT | None (HTTPS GET only) |
+| FluidAudio model download | `huggingface.co/FluidInference/*` | User selects Parakeet TDT v3 | None (HTTPS GET only) |
 | Qwen3 ASR download (CPU/ONNX) | `huggingface.co/Qwen/*`, `huggingface.co/jima/*` | User selects Qwen3 ASR (CPU or ONNX) | None (HTTPS GET only) |
 | Qwen3 ASR download (MLX) | `huggingface.co/mlx-community/*` | User selects Qwen3 ASR MLX backend (macOS) | None (HTTPS GET only) |
 | Apple Speech | System built-in | User selects Apple Speech model | None — `requiresOnDeviceRecognition = true` |
@@ -349,4 +349,3 @@ All model downloads are user-initiated (on model selection), cached locally, and
 ## License
 
 Apache License 2.0. See `LICENSE`.
-
