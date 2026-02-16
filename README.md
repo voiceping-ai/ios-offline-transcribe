@@ -5,6 +5,14 @@
 Offline-first iOS and macOS transcription app focused on local speech recognition.
 All inference runs on-device after model download.
 
+### Benchmark — iOS (iPad Pro 3rd gen, A12X)
+
+![iOS Inference Speed](docs/ios_tokens_per_second.svg)
+
+### Benchmark — macOS (MacBook Air M4)
+
+![macOS Inference Speed](docs/macos_tokens_per_second.svg)
+
 ## Screenshots
 
 ### iOS (iPad Pro 3rd gen)
@@ -124,8 +132,6 @@ Defined in `OfflineTranscription/Models/ModelInfo.swift` and `OfflineTranscripti
 - **RTF** — Real Time Factor (`inference_time / audio_duration`). Values below 1.0 mean faster than real-time.
 - Inference time is wall-clock time for `engine.transcribe()` only — excludes model download and load.
 
-![iOS Inference Speed](docs/ios_tokens_per_second.svg)
-
 | Model | Engine | Params | Model size (download) | Languages | tok/s | Status |
 |---|---|---:|---:|---|---:|---|
 | [`parakeet-tdt-v3`](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) | FluidAudio (CoreML) | 600M | ~600 MB (CoreML) | 25 European | 181.8 | ✅ |
@@ -152,8 +158,6 @@ Defined in `OfflineTranscription/Models/ModelInfo.swift` and `OfflineTranscripti
 ### macOS Benchmark (MacBook Air M4)
 
 32 GB RAM. Low Power Mode on during benchmark. Same 30-second JFK test audio as above. Sorted by tok/s.
-
-![macOS Inference Speed](docs/macos_tokens_per_second.svg)
 
 | Model | Engine | Params | Model size (download) | Languages | tok/s | Status |
 |---|---|---:|---:|---|---:|---|

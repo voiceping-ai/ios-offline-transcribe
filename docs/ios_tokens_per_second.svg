@@ -1,84 +1,82 @@
-<svg xmlns='http://www.w3.org/2000/svg' width='920' height='604' viewBox='-100 0 920 604'>
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="310" viewBox="-80 0 1000 310">
+<defs>
+  <linearGradient id="g-sherpa" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#34d399"/><stop offset="100%" stop-color="#059669"/>
+  </linearGradient>
+  <linearGradient id="g-stream" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#22d3ee"/><stop offset="100%" stop-color="#0891b2"/>
+  </linearGradient>
+  <linearGradient id="g-whisperkit" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#60a5fa"/><stop offset="100%" stop-color="#2563eb"/>
+  </linearGradient>
+  <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/>
+  </linearGradient>
+</defs>
 <style>
-text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
-.title { font-size: 18px; font-weight: 700; fill: #1f2937; }
-.subtitle { font-size: 11px; fill: #6b7280; }
-.axis { font-size: 10px; fill: #6b7280; }
-.label { font-size: 11px; fill: #374151; }
-.value { font-size: 10px; fill: #374151; font-weight: 600; }
+  text { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, sans-serif; }
 </style>
-<rect width='100%' height='100%' fill='#ffffff' />
-<text x='260' y='24' class='title'>iOS Inference Speed (tok/s)</text>
-<text x='260' y='42' class='subtitle'>iPad Pro 3rd gen (A12X), 30s English audio, sorted by throughput</text>
-<line x1='260' y1='56' x2='260' y2='574' stroke='#e5e7eb' />
-<line x1='260' y1='574' x2='710' y2='574' stroke='#e5e7eb' />
-<line x1='260.0' y1='574' x2='260.0' y2='579' stroke='#d1d5db' />
-<text x='260.0' y='594' text-anchor='middle' class='axis'>0.0</text>
-<line x1='348.0' y1='574' x2='348.0' y2='579' stroke='#d1d5db' />
-<text x='348.0' y='594' text-anchor='middle' class='axis'>36.4</text>
-<line x1='436.0' y1='574' x2='436.0' y2='579' stroke='#d1d5db' />
-<text x='436.0' y='594' text-anchor='middle' class='axis'>72.7</text>
-<line x1='524.0' y1='574' x2='524.0' y2='579' stroke='#d1d5db' />
-<text x='524.0' y='594' text-anchor='middle' class='axis'>109.1</text>
-<line x1='612.0' y1='574' x2='612.0' y2='579' stroke='#d1d5db' />
-<text x='612.0' y='594' text-anchor='middle' class='axis'>145.4</text>
-<line x1='700.0' y1='574' x2='700.0' y2='579' stroke='#d1d5db' />
-<text x='700.0' y='594' text-anchor='middle' class='axis'>181.8</text>
-<text x='252' y='75' text-anchor='end' class='label'>Parakeet TDT 0.6B v3</text>
-<rect x='260' y='60' width='440.0' height='20' rx='3' fill='#3b82f6' />
-<text x='706.0' y='75' class='value'>181.8 tok/s</text>
-<text x='252' y='101' text-anchor='end' class='label'>Zipformer 20M</text>
-<rect x='260' y='86' width='96.1' height='20' rx='3' fill='#3b82f6' />
-<text x='362.1' y='101' class='value'>39.7 tok/s</text>
-<text x='252' y='127' text-anchor='end' class='label'>Whisper Tiny (whisper.cpp)</text>
-<rect x='260' y='112' width='91.5' height='20' rx='3' fill='#3b82f6' />
-<text x='357.5' y='127' class='value'>37.8 tok/s</text>
-<text x='252' y='153' text-anchor='end' class='label'>Moonshine Tiny</text>
-<rect x='260' y='138' width='90.3' height='20' rx='3' fill='#3b82f6' />
-<text x='356.3' y='153' class='value'>37.3 tok/s</text>
-<text x='252' y='179' text-anchor='end' class='label'>Moonshine Base</text>
-<rect x='260' y='164' width='75.8' height='20' rx='3' fill='#3b82f6' />
-<text x='341.8' y='179' class='value'>31.3 tok/s</text>
-<text x='252' y='205' text-anchor='end' class='label'>Whisper Base (WhisperKit)</text>
-<rect x='260' y='190' width='47.4' height='20' rx='3' fill='#3b82f6' />
-<text x='313.4' y='205' class='value'>19.6 tok/s</text>
-<text x='252' y='231' text-anchor='end' class='label'>SenseVoice Small</text>
-<rect x='260' y='216' width='37.8' height='20' rx='3' fill='#3b82f6' />
-<text x='303.8' y='231' class='value'>15.6 tok/s</text>
-<text x='252' y='257' text-anchor='end' class='label'>Whisper Base (whisper.cpp)</text>
-<rect x='260' y='242' width='33.4' height='20' rx='3' fill='#3b82f6' />
-<text x='299.4' y='257' class='value'>13.8 tok/s</text>
-<text x='252' y='283' text-anchor='end' class='label'>Whisper Small (WhisperKit)</text>
-<rect x='260' y='268' width='15.2' height='20' rx='3' fill='#3b82f6' />
-<text x='281.2' y='283' class='value'>6.3 tok/s</text>
-<text x='252' y='309' text-anchor='end' class='label'>Qwen3 ASR 0.6B (CPU)</text>
-<rect x='260' y='294' width='13.6' height='20' rx='3' fill='#3b82f6' />
-<text x='279.6' y='309' class='value'>5.6 tok/s</text>
-<text x='252' y='335' text-anchor='end' class='label'>Qwen3 ASR 0.6B (ONNX)</text>
-<rect x='260' y='320' width='13.1' height='20' rx='3' fill='#3b82f6' />
-<text x='279.1' y='335' class='value'>5.4 tok/s</text>
-<text x='252' y='361' text-anchor='end' class='label'>Whisper Tiny (WhisperKit)</text>
-<rect x='260' y='346' width='10.9' height='20' rx='3' fill='#3b82f6' />
-<text x='276.9' y='361' class='value'>4.5 tok/s</text>
-<text x='252' y='387' text-anchor='end' class='label'>Whisper Small (whisper.cpp)</text>
-<rect x='260' y='372' width='9.4' height='20' rx='3' fill='#3b82f6' />
-<text x='275.4' y='387' class='value'>3.9 tok/s</text>
-<text x='252' y='413' text-anchor='end' class='label'>Whisper Large V3 Turbo (Compressed, WhisperKit)</text>
-<rect x='260' y='398' width='4.6' height='20' rx='3' fill='#3b82f6' />
-<text x='270.6' y='413' class='value'>1.9 tok/s</text>
-<text x='252' y='439' text-anchor='end' class='label'>Whisper Large V3 Turbo (WhisperKit)</text>
-<rect x='260' y='424' width='3.4' height='20' rx='3' fill='#3b82f6' />
-<text x='269.4' y='439' class='value'>1.4 tok/s</text>
-<text x='252' y='465' text-anchor='end' class='label'>Whisper Large V3 Turbo (whisper.cpp)</text>
-<rect x='260' y='450' width='2.0' height='20' rx='3' fill='#3b82f6' />
-<text x='268.0' y='465' class='value'>0.8 tok/s</text>
-<text x='252' y='491' text-anchor='end' class='label'>Whisper Large V3 Turbo (Compressed, whisper.cpp)</text>
-<rect x='260' y='476' width='2.0' height='20' rx='3' fill='#3b82f6' />
-<text x='268.0' y='491' class='value'>0.8 tok/s</text>
-<text x='252' y='517' text-anchor='end' class='label'>Apple Speech</text>
-<rect x='260' y='502' width='2.0' height='20' rx='3' fill='#d1d5db' stroke='#d1d5db' stroke-dasharray='4 2' />
-<text x='268.0' y='517' class='value' fill='#9ca3af'>N/A</text>
-<text x='252' y='543' text-anchor='end' class='label'>Omnilingual 300M</text>
-<rect x='260' y='528' width='2.0' height='20' rx='3' fill='#d1d5db' stroke='#d1d5db' stroke-dasharray='4 2' />
-<text x='268.0' y='543' class='value' fill='#9ca3af'>N/A</text>
+
+<!-- Card background -->
+<rect x="-80" width="1000" height="310" rx="12" fill="white"/>
+<rect x="-79" y="1" width="998" height="308" rx="11" fill="white" stroke="#e2e8f0" stroke-width="1"/>
+
+<!-- Accent bar at top -->
+<rect x="-79" y="1" width="998" height="5" rx="11" fill="url(#accent)" style="clip-path: inset(0 0 0 0 round 11px 11px 0 0)"/>
+
+<!-- Title -->
+<text x="270" y="34" font-size="18" font-weight="700" fill="#111827">iOS Inference Speed (tok/s)</text>
+<text x="270" y="52" font-size="11" fill="#9ca3af">iPad Pro 3rd gen (A12X) · 30 s English audio · sorted by throughput</text>
+
+<!-- Grid lines -->
+<line x1="270" y1="66" x2="270" y2="222" stroke="#e5e7eb" stroke-width="1"/>
+<line x1="444" y1="66" x2="444" y2="222" stroke="#f1f5f9" stroke-width="1"/>
+<line x1="618" y1="66" x2="618" y2="222" stroke="#f1f5f9" stroke-width="1"/>
+<line x1="793" y1="66" x2="793" y2="222" stroke="#f1f5f9" stroke-width="1"/>
+
+<!-- X-axis -->
+<line x1="270" y1="222" x2="840" y2="222" stroke="#e5e7eb" stroke-width="1"/>
+<text x="270" y="238" text-anchor="middle" font-size="9" fill="#9ca3af">0</text>
+<text x="444" y="238" text-anchor="middle" font-size="9" fill="#9ca3af">20</text>
+<text x="618" y="238" text-anchor="middle" font-size="9" fill="#9ca3af">40</text>
+<text x="793" y="238" text-anchor="middle" font-size="9" fill="#9ca3af">60</text>
+<text x="850" y="238" font-size="9" fill="#b0b8c4">tok/s &#x2192;</text>
+
+<!-- Row 0: Zipformer 20M — 64.2 tok/s — streaming -->
+<text x="260" y="87" text-anchor="end" font-size="11" fill="#374151">Zipformer 20M</text>
+<rect x="270" y="72" width="560" height="22" rx="5" fill="url(#g-stream)"/>
+<text x="836" y="87" font-size="10" font-weight="600" fill="#1f2937">64.2 tok/s</text>
+
+<!-- Row 1: Moonshine Tiny — 53.0 tok/s — sherpa offline -->
+<rect x="-80" y="98" width="1000" height="30" fill="#f8fafc"/>
+<text x="260" y="117" text-anchor="end" font-size="11" fill="#374151">Moonshine Tiny</text>
+<rect x="270" y="102" width="463" height="22" rx="5" fill="url(#g-sherpa)"/>
+<text x="739" y="117" font-size="10" font-weight="600" fill="#1f2937">53.0 tok/s</text>
+
+<!-- Row 2: Moonshine Base — 36.3 tok/s — sherpa offline -->
+<text x="260" y="147" text-anchor="end" font-size="11" fill="#374151">Moonshine Base</text>
+<rect x="270" y="132" width="317" height="22" rx="5" fill="url(#g-sherpa)"/>
+<text x="593" y="147" font-size="10" font-weight="600" fill="#1f2937">36.3 tok/s</text>
+
+<!-- Row 3: SenseVoice Small — 13.8 tok/s — sherpa offline -->
+<rect x="-80" y="158" width="1000" height="30" fill="#f8fafc"/>
+<text x="260" y="177" text-anchor="end" font-size="11" fill="#374151">SenseVoice Small</text>
+<rect x="270" y="162" width="121" height="22" rx="5" fill="url(#g-sherpa)"/>
+<text x="397" y="177" font-size="10" font-weight="600" fill="#1f2937">13.8 tok/s</text>
+
+<!-- Row 4: Whisper Tiny — 3.2 tok/s — WhisperKit -->
+<text x="260" y="207" text-anchor="end" font-size="11" fill="#374151">Whisper Tiny</text>
+<rect x="270" y="192" width="28" height="22" rx="5" fill="url(#g-whisperkit)"/>
+<text x="304" y="207" font-size="10" font-weight="600" fill="#1f2937">3.2 tok/s</text>
+
+<!-- Legend -->
+<circle cx="270" cy="264" r="5" fill="#0891b2"/>
+<text x="280" y="268" font-size="10" fill="#6b7280">sherpa-onnx Streaming</text>
+<circle cx="410" cy="264" r="5" fill="#059669"/>
+<text x="420" y="268" font-size="10" fill="#6b7280">sherpa-onnx Offline</text>
+<circle cx="540" cy="264" r="5" fill="#2563eb"/>
+<text x="550" y="268" font-size="10" fill="#6b7280">WhisperKit CoreML</text>
+
+<!-- Benchmark info -->
+<text x="270" y="294" font-size="9" fill="#c4cad2">5 of 15 models benchmarked · Feb 2026</text>
 </svg>
